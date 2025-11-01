@@ -40,32 +40,9 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const { userId } = request.query as { userId?: string }
 
-    // For demo purposes, return demo user personas if no userId provided
     if (!userId) {
-      try {
-        const personas = await prisma.persona.findMany({
-          where: { userId: 'demo-user-1' },
-          orderBy: [
-            { isDefault: 'desc' },
-            { createdAt: 'desc' }
-          ]
-        })
-
-        // Parse JSON string fields back to arrays for API response
-        const parsedPersonas = personas.map(persona => ({
-          ...persona,
-          tone: JSON.parse(persona.tone),
-          donts: JSON.parse(persona.donts),
-          hookPatterns: JSON.parse(persona.hookPatterns),
-          platforms: persona.platforms ? JSON.parse(persona.platforms) : {}
-        }))
-
-        return parsedPersonas
-      } catch (error) {
-        fastify.log.error({ error }, 'Failed to fetch demo personas')
-        // Fallback to hardcoded personas if DB fails
-        return []
-      }
+      reply.code(400)
+      return { error: 'userId is required' }
     }
 
     try {
@@ -77,16 +54,7 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
         ]
       })
 
-      // Parse JSON string fields back to arrays for API response
-      const parsedPersonas = personas.map(persona => ({
-        ...persona,
-        tone: JSON.parse(persona.tone),
-        donts: JSON.parse(persona.donts),
-        hookPatterns: JSON.parse(persona.hookPatterns),
-        platforms: persona.platforms ? JSON.parse(persona.platforms) : {}
-      }))
-
-      return parsedPersonas
+      return personas
     } catch (error) {
       fastify.log.error({ error }, 'Failed to fetch personas')
       reply.code(500)
@@ -120,16 +88,7 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
         return { error: 'Persona not found' }
       }
 
-      // Parse JSON string fields back to arrays for API response
-      const parsedPersona = {
-        ...persona,
-        tone: JSON.parse(persona.tone),
-        donts: JSON.parse(persona.donts),
-        hookPatterns: JSON.parse(persona.hookPatterns),
-        platforms: persona.platforms ? JSON.parse(persona.platforms) : {}
-      }
-
-      return parsedPersona
+      return persona
     } catch (error) {
       fastify.log.error({ error }, 'Failed to fetch persona')
       reply.code(500)
@@ -187,26 +146,17 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
           name: body.name,
           description: body.description,
           userId: body.userId,
-          tone: JSON.stringify(body.tone),
+          tone: body.tone,
           cadence: body.cadence,
-          donts: JSON.stringify(body.donts || []),
-          hookPatterns: JSON.stringify(body.hookPatterns || []),
+          donts: body.donts || [],
+          hookPatterns: body.hookPatterns || [],
           ctaStyle: body.ctaStyle,
           isDefault: body.isDefault || false,
-          platforms: JSON.stringify(body.platforms || {})
+          platforms: body.platforms || {}
         }
       })
 
-      // Parse JSON string fields back to arrays for API response
-      const parsedPersona = {
-        ...persona,
-        tone: JSON.parse(persona.tone),
-        donts: JSON.parse(persona.donts),
-        hookPatterns: JSON.parse(persona.hookPatterns),
-        platforms: persona.platforms ? JSON.parse(persona.platforms) : {}
-      }
-
-      return parsedPersona
+      return persona
     } catch (error) {
       fastify.log.error({ error }, 'Failed to create persona')
       reply.code(500)
