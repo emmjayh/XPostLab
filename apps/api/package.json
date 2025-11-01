@@ -21,8 +21,7 @@
     "bullmq": "^4.15.0",
     "ioredis": "^5.3.0",
     "dotenv": "^16.3.0",
-    "@ai-content-coach/database": "workspace:*",
-    "@ai-content-coach/shared": "workspace:*"
+    "prisma": "^5.6.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

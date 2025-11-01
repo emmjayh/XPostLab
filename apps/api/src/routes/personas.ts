@@ -1,5 +1,5 @@
 import { FastifyPluginAsync } from 'fastify'
-import { prisma } from '@ai-content-coach/database'
+import { prisma } from '../lib'
 
 const personasRoutes: FastifyPluginAsync = async (fastify) => {
   // Get all personas for a user

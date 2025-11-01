@@ -1,5 +1,5 @@
-import { prisma } from '@ai-content-coach/database'
-import { PersonaEngine, ContentRequest, ContentVariant, GenerationResult } from '@ai-content-coach/shared'
+import { prisma } from '../lib'
+import { PersonaEngine, ContentRequest, ContentVariant, GenerationResult } from '../lib'
 import { JobService } from './job-service'
 
 export interface ComposerRequest {

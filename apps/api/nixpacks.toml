@@ -1,15 +1,5 @@
-[variables]
-NIXPACKS_PACKAGE_MANAGER = "pnpm"
-
-[phases.setup]
-nixPkgs = ["nodejs_18", "corepack"]
-cmds = ["corepack enable pnpm"]
-
-[phases.install]
-cmds = ["cd ../.. && pnpm install --frozen-lockfile"]
-
 [phases.build]
-cmds = ["cd ../.. && pnpm build --filter=@ai-content-coach/api"]
+cmds = ["npm run build"]
 
 [start]
-cmd = "cd ../../apps/api && pnpm start"
+cmd = "npm start"

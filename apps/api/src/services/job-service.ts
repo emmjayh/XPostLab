@@ -1,4 +1,4 @@
-import { prisma } from '@ai-content-coach/database'
+import { prisma } from '../lib'
 
 export interface CreateJobRequest {
   type: string
