@@ -40,14 +40,12 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const { userId } = request.query as { userId?: string }
 
-    if (!userId) {
-      reply.code(400)
-      return { error: 'userId is required' }
-    }
+    // For development, use a default userId if none provided
+    const effectiveUserId = userId || 'dev-user'
 
     try {
       const personas = await prisma.persona.findMany({
-        where: { userId },
+        where: { userId: effectiveUserId },
         orderBy: [
           { isDefault: 'desc' },
           { createdAt: 'desc' }

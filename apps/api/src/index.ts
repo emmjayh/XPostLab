@@ -66,6 +66,12 @@ const start = async () => {
     const port = parseInt(process.env.PORT || '8000')
     const host = process.env.HOST || '0.0.0.0'
     
+    // Create demo personas on startup (development only)
+    if (process.env.NODE_ENV !== 'production') {
+      const { createDemoPersonas } = await import('./lib/create-demo-personas')
+      await createDemoPersonas()
+    }
+    
     await fastify.listen({ port, host })
     
     fastify.log.info(`🚀 API server running at http://${host}:${port}`)
