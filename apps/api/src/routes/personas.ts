@@ -51,14 +51,7 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
           ]
         })
 
-        // Parse JSON strings back to arrays/objects for API response
-        return personas.map(persona => ({
-          ...persona,
-          tone: JSON.parse(persona.tone),
-          donts: JSON.parse(persona.donts),
-          hookPatterns: JSON.parse(persona.hookPatterns),
-          platforms: JSON.parse(persona.platforms)
-        }))
+        return personas
       } catch (error) {
         fastify.log.error('Failed to fetch demo personas:', error)
         // Fallback to hardcoded personas if DB fails
@@ -75,14 +68,7 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
         ]
       })
 
-      // Parse JSON strings back to arrays/objects for API response
-      return personas.map(persona => ({
-        ...persona,
-        tone: JSON.parse(persona.tone),
-        donts: JSON.parse(persona.donts),
-        hookPatterns: JSON.parse(persona.hookPatterns),
-        platforms: JSON.parse(persona.platforms)
-      }))
+      return personas
     } catch (error) {
       fastify.log.error('Failed to fetch personas:', error)
       reply.code(500)
@@ -116,14 +102,7 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
         return { error: 'Persona not found' }
       }
 
-      // Parse JSON strings back to arrays/objects for API response
-      return {
-        ...persona,
-        tone: JSON.parse(persona.tone),
-        donts: JSON.parse(persona.donts),
-        hookPatterns: JSON.parse(persona.hookPatterns),
-        platforms: JSON.parse(persona.platforms)
-      }
+      return persona
     } catch (error) {
       fastify.log.error('Failed to fetch persona:', error)
       reply.code(500)
@@ -181,24 +160,17 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
           name: body.name,
           description: body.description,
           userId: body.userId,
-          tone: JSON.stringify(body.tone),
+          tone: body.tone,
           cadence: body.cadence,
-          donts: JSON.stringify(body.donts || []),
-          hookPatterns: JSON.stringify(body.hookPatterns || []),
+          donts: body.donts || [],
+          hookPatterns: body.hookPatterns || [],
           ctaStyle: body.ctaStyle,
           isDefault: body.isDefault || false,
-          platforms: JSON.stringify(body.platforms || {})
+          platforms: body.platforms || {}
         }
       })
 
-      // Parse JSON strings back for response
-      return {
-        ...persona,
-        tone: JSON.parse(persona.tone),
-        donts: JSON.parse(persona.donts),
-        hookPatterns: JSON.parse(persona.hookPatterns),
-        platforms: JSON.parse(persona.platforms)
-      }
+      return persona
     } catch (error) {
       fastify.log.error('Failed to create persona:', error)
       reply.code(500)

@@ -192,12 +192,12 @@ Return as JSON array with same structure as composer.
       id: dbPersona.id,
       name: dbPersona.name,
       description: dbPersona.description,
-      tone: typeof dbPersona.tone === 'string' ? JSON.parse(dbPersona.tone) : dbPersona.tone,
+      tone: dbPersona.tone,
       cadence: dbPersona.cadence,
-      donts: typeof dbPersona.donts === 'string' ? JSON.parse(dbPersona.donts) : dbPersona.donts,
-      hookPatterns: typeof dbPersona.hookPatterns === 'string' ? JSON.parse(dbPersona.hookPatterns) : dbPersona.hookPatterns,
+      donts: dbPersona.donts,
+      hookPatterns: dbPersona.hookPatterns,
       ctaStyle: dbPersona.ctaStyle,
-      platforms: typeof dbPersona.platforms === 'string' ? JSON.parse(dbPersona.platforms) : dbPersona.platforms
+      platforms: dbPersona.platforms
     }
 
     return new PersonaEngine(persona)

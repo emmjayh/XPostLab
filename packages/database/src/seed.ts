@@ -14,8 +14,8 @@ async function main() {
         type: 'hook',
         platform: 'twitter',
         template: 'What if {topic}?',
-        variables: JSON.stringify(['topic']),
-        tags: JSON.stringify(['engagement', 'question'])
+        variables: ['topic'],
+        tags: ['engagement', 'question']
       },
       {
         name: 'Contrarian Take',
@@ -23,8 +23,8 @@ async function main() {
         type: 'hook',
         platform: 'twitter',
         template: 'Unpopular opinion: {statement}',
-        variables: JSON.stringify(['statement']),
-        tags: JSON.stringify(['controversial', 'opinion'])
+        variables: ['statement'],
+        tags: ['controversial', 'opinion']
       },
       {
         name: 'Personal Story',
@@ -32,8 +32,8 @@ async function main() {
         type: 'hook',
         platform: 'twitter',
         template: '{timeframe} ago, I {experience}. Here\'s what I learned:',
-        variables: JSON.stringify(['timeframe', 'experience']),
-        tags: JSON.stringify(['personal', 'story', 'lesson'])
+        variables: ['timeframe', 'experience'],
+        tags: ['personal', 'story', 'lesson']
       },
       {
         name: 'List Thread',
@@ -41,8 +41,8 @@ async function main() {
         type: 'full_post',
         platform: 'twitter',
         template: '{intro}\n\nThread 🧵\n\n{items}',
-        variables: JSON.stringify(['intro', 'items']),
-        tags: JSON.stringify(['thread', 'list', 'educational'])
+        variables: ['intro', 'items'],
+        tags: ['thread', 'list', 'educational']
       }
     ]
   })
@@ -64,12 +64,12 @@ async function main() {
       description: 'Balanced professional voice with personal insights',
       isDefault: true,
       userId: demoUser.id,
-      tone: JSON.stringify(['professional', 'insightful', 'approachable']),
+      tone: ['professional', 'insightful', 'approachable'],
       cadence: 'conversational',
-      donts: JSON.stringify(['use corporate jargon', 'be overly promotional', 'post without value']),
-      hookPatterns: JSON.stringify(['Question hooks', 'Personal stories', 'Contrarian takes']),
+      donts: ['use corporate jargon', 'be overly promotional', 'post without value'],
+      hookPatterns: ['Question hooks', 'Personal stories', 'Contrarian takes'],
       ctaStyle: 'question-based',
-      platforms: JSON.stringify({
+      platforms: {
         twitter: {
           maxLength: 280,
           preferredHashtags: 2,
@@ -80,7 +80,7 @@ async function main() {
           professionalTone: true,
           includeCallToAction: true
         }
-      })
+      }
     }
   })
 
@@ -90,12 +90,12 @@ async function main() {
       description: 'Relaxed but authoritative voice for everyday insights',
       isDefault: false,
       userId: demoUser.id,
-      tone: JSON.stringify(['casual', 'authentic', 'helpful']),
+      tone: ['casual', 'authentic', 'helpful'],
       cadence: 'concise',
-      donts: JSON.stringify(['sound too formal', 'use big words unnecessarily', 'ignore questions']),
-      hookPatterns: JSON.stringify(['Story hooks', 'Insight drops', 'Quick tips']),
+      donts: ['sound too formal', 'use big words unnecessarily', 'ignore questions'],
+      hookPatterns: ['Story hooks', 'Insight drops', 'Quick tips'],
       ctaStyle: 'soft',
-      platforms: JSON.stringify({
+      platforms: {
         twitter: {
           maxLength: 280,
           preferredHashtags: 1,
@@ -106,7 +106,7 @@ async function main() {
           professionalTone: false,
           includeCallToAction: true
         }
-      })
+      }
     }
   })
 
