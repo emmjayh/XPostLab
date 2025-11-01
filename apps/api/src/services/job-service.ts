@@ -1,4 +1,4 @@
-import { prisma } from '../lib'
+// import { prisma } from '../lib' // Temporarily disabled for quick setup
 
 export interface CreateJobRequest {
   type: string

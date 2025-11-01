@@ -1,5 +1,5 @@
 import { FastifyPluginAsync } from 'fastify'
-import { prisma } from '../lib'
+// import { prisma } from '../lib' // Temporarily disabled for quick setup
 
 const personasRoutes: FastifyPluginAsync = async (fastify) => {
   // Get all personas for a user
@@ -44,15 +44,41 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
     const effectiveUserId = userId || 'dev-user'
 
     try {
-      const personas = await prisma.persona.findMany({
-        where: { userId: effectiveUserId },
-        orderBy: [
-          { isDefault: 'desc' },
-          { createdAt: 'desc' }
-        ]
-      })
+      // Return mock personas for now to get the API working
+      const mockPersonas = [
+        {
+          id: 'persona-1',
+          userId: effectiveUserId,
+          name: 'Professional Coach',
+          description: 'Expert business and leadership content',
+          isDefault: true,
+          tone: ['professional', 'insightful', 'authoritative'],
+          cadence: 'detailed',
+          donts: ['use slang', 'be overly casual'],
+          hookPatterns: ['Data-driven insights', 'Industry observations'],
+          ctaStyle: 'direct',
+          platforms: { linkedin: { maxLength: 3000 } },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: 'persona-2', 
+          userId: effectiveUserId,
+          name: 'Casual Creator',
+          description: 'Friendly, relatable social media personality',
+          isDefault: false,
+          tone: ['casual', 'friendly', 'humorous'],
+          cadence: 'conversational',
+          donts: ['be too formal', 'use corporate speak'],
+          hookPatterns: ['Personal stories', 'Quick tips'],
+          ctaStyle: 'question-based',
+          platforms: { twitter: { maxLength: 280 } },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ]
 
-      return personas
+      return mockPersonas
     } catch (error) {
       fastify.log.error({ error }, 'Failed to fetch personas')
       reply.code(500)
@@ -77,9 +103,41 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
     const { personaId } = request.params as { personaId: string }
 
     try {
-      const persona = await prisma.persona.findUnique({
-        where: { id: personaId }
-      })
+      // Return mock persona data for now
+      const mockPersonas = [
+        {
+          id: 'persona-1',
+          userId: 'dev-user',
+          name: 'Professional Coach',
+          description: 'Expert business and leadership content',
+          isDefault: true,
+          tone: ['professional', 'insightful', 'authoritative'],
+          cadence: 'detailed',
+          donts: ['use slang', 'be overly casual'],
+          hookPatterns: ['Data-driven insights', 'Industry observations'],
+          ctaStyle: 'direct',
+          platforms: { linkedin: { maxLength: 3000 } },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: 'persona-2', 
+          userId: 'dev-user',
+          name: 'Casual Creator',
+          description: 'Friendly, relatable social media personality',
+          isDefault: false,
+          tone: ['casual', 'friendly', 'humorous'],
+          cadence: 'conversational',
+          donts: ['be too formal', 'use corporate speak'],
+          hookPatterns: ['Personal stories', 'Quick tips'],
+          ctaStyle: 'question-based',
+          platforms: { twitter: { maxLength: 280 } },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ]
+
+      const persona = mockPersonas.find(p => p.id === personaId)
 
       if (!persona) {
         reply.code(404)
@@ -131,30 +189,24 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     try {
-      // If this is set as default, unset other defaults
-      if (body.isDefault) {
-        await prisma.persona.updateMany({
-          where: { userId: body.userId, isDefault: true },
-          data: { isDefault: false }
-        })
+      // Return mock created persona for now
+      const newPersona = {
+        id: `persona-${Date.now()}`,
+        userId: body.userId,
+        name: body.name,
+        description: body.description,
+        isDefault: body.isDefault || false,
+        tone: body.tone,
+        cadence: body.cadence,
+        donts: body.donts || [],
+        hookPatterns: body.hookPatterns || [],
+        ctaStyle: body.ctaStyle,
+        platforms: body.platforms || {},
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       }
 
-      const persona = await prisma.persona.create({
-        data: {
-          name: body.name,
-          description: body.description,
-          userId: body.userId,
-          tone: body.tone,
-          cadence: body.cadence,
-          donts: body.donts || [],
-          hookPatterns: body.hookPatterns || [],
-          ctaStyle: body.ctaStyle,
-          isDefault: body.isDefault || false,
-          platforms: body.platforms || {}
-        }
-      })
-
-      return persona
+      return newPersona
     } catch (error) {
       fastify.log.error({ error }, 'Failed to create persona')
       reply.code(500)

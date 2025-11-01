@@ -3,27 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
-}
-
-// Enums
-enum JobStatus {
-  QUEUED
-  RUNNING
-  COMPLETED
-  FAILED
-  CANCELLED
-}
-
-enum JobType {
-  BRAIN_DUMP
-  COMPOSE
-  REPLY_GENERATION
-  ALGO_ANALYSIS
-  ACCOUNT_RESEARCH
-  AVATAR_GENERATION
-  HISTORY_ANALYSIS
 }
 
 // User and authentication
@@ -39,41 +20,8 @@ model User {
   personas  Persona[]
   posts     Post[]
   jobs      Job[]
-  accounts  Account[]
-  sessions  Session[]
-  insights  Insight[]
 
   @@map("users")
-}
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-  @@map("accounts")
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("sessions")
 }
 
 // Core voiceprint/persona system
@@ -86,15 +34,15 @@ model Persona {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Voiceprint configuration
-  tone         String[] // ["professional", "casual", "humorous"]
+  // Voiceprint configuration (simplified for SQLite)
+  tone         String   // JSON string of tone array
   cadence      String   // "concise", "detailed", "conversational"
-  donts        String[] // ["use corporate speak", "be overly promotional"]
-  hookPatterns String[] // ["Question hooks", "Contrarian takes", "Personal stories"]
+  donts        String   // JSON string of don'ts array
+  hookPatterns String   // JSON string of hook patterns array
   ctaStyle     String   // "direct", "soft", "question-based"
   
-  // Platform-specific settings
-  platforms Json @default("{}")
+  // Platform-specific settings (JSON string)
+  platforms String @default("{}")
 
   // Relations
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -110,13 +58,13 @@ model Post {
   userId    String
   personaId String?
   platform  String   // "twitter", "linkedin", "instagram"
-  content   String  @db.Text
+  content   String
   published Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Platform-specific data
-  platformData Json @default("{}")
+  // Platform-specific data (JSON string)
+  platformData String @default("{}")
   
   // Analytics
   views        Int @default(0)
@@ -136,19 +84,19 @@ model Post {
   @@map("posts")
 }
 
-// Job processing system
+// Job processing system (simplified for SQLite)
 model Job {
-  id        String    @id @default(cuid())
+  id        String   @id @default(cuid())
   userId    String
   personaId String?
-  type      JobType
-  status    JobStatus @default(QUEUED)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  type      String   // "BRAIN_DUMP", "COMPOSE", etc.
+  status    String   @default("QUEUED") // "QUEUED", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   
-  // Job data
-  input  Json
-  output Json?
+  // Job data (JSON strings)
+  input  String
+  output String?
   error  String?
   
   // Processing metadata
@@ -163,56 +111,18 @@ model Job {
   @@map("jobs")
 }
 
-// Analytics and insights
-model Insight {
-  id        String   @id @default(cuid())
-  userId    String
-  type      String   // "hook_performance", "posting_window", "topic_trend"
-  category  String   // "composer", "timing", "engagement"
-  data      Json     // Analytics and insights data
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("insights")
-}
-
-// Content templates and variations
+// Content templates
 model Template {
   id          String   @id @default(cuid())
   name        String
   description String?
   type        String   // "hook", "body", "cta", "full_post"
   platform    String   // "twitter", "linkedin", "universal"
-  template    String   @db.Text // The actual template with placeholders
-  variables   String[] // List of variable names
-  tags        String[] // For categorization
+  template    String   // The actual template with placeholders
+  variables   String   // JSON string of variable names
+  tags        String   // JSON string for categorization
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@map("templates")
 }
-
-// External account research cache
-model AccountProfile {
-  id          String   @id @default(cuid())
-  platform    String   // "twitter", "linkedin"
-  handle      String
-  displayName String?
-  bio         String? @db.Text
-  followers   Int      @default(0)
-  following   Int      @default(0)
-  
-  // Analysis data
-  topTopics     String[] // Array of topics
-  engagementWith String[] // Array of handles they frequently engage with
-  postingTimes   Json    // Frequency analysis data
-  
-  // Cache metadata
-  lastAnalyzed DateTime @default(now())
-  createdAt    DateTime @default(now())
-
-  @@unique([platform, handle])
-  @@map("account_profiles")
-}
-

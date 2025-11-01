@@ -1,4 +1,4 @@
-import { prisma } from '../lib'
+// import { prisma } from '../lib' // Temporarily disabled for quick setup
 import { PersonaEngine, ContentRequest, ContentVariant, GenerationResult } from '../lib'
 import { JobService } from './job-service'
 
@@ -27,18 +27,28 @@ export class ComposerService {
     error?: string
   }> {
     try {
-      // Validate persona exists
-      const persona = await prisma.persona.findUnique({
-        where: { id: request.personaId }
-      })
+      console.log('🎯 generateFromBrainDump called with:', JSON.stringify(request, null, 2))
 
-      if (!persona) {
+      // Use mock persona validation for now
+      const mockPersonas = ['persona-1', 'persona-2']
+      if (!mockPersonas.includes(request.personaId)) {
+        console.error('❌ Persona not found:', request.personaId)
         throw new Error('Persona not found')
       }
 
+      console.log('✅ Persona validated:', request.personaId)
+
       // For simple requests, generate synchronously
-      if ((request.options?.variants || 3) <= 2 && request.input.length < 500) {
+      const shouldGenerateSync = (request.options?.variants || 3) <= 2 && request.input.length < 500
+      console.log('🤔 Should generate sync?', shouldGenerateSync, {
+        variants: request.options?.variants || 3,
+        inputLength: request.input.length
+      })
+
+      if (shouldGenerateSync) {
+        console.log('⚡ Generating synchronously...')
         const result = await this.generateSync(request)
+        console.log('✨ Sync generation complete:', result.success)
         return {
           success: result.success,
           jobId: 'sync', // No actual job for sync requests
@@ -48,35 +58,48 @@ export class ComposerService {
       }
 
       // For complex requests, queue a job
+      console.log('📋 Creating job for async processing...')
       const job = await this.jobService.createComposerJob({
         type: 'BRAIN_DUMP',
         personaId: request.personaId,
         input: request
       })
 
+      console.log('✅ Job created:', job.id)
       return {
         success: true,
         jobId: job.id
       }
 
     } catch (error) {
+      console.error('💥 Error in generateFromBrainDump:', error)
+      console.error('💥 Error stack:', error instanceof Error ? error.stack : 'No stack')
+      console.error('💥 Error type:', typeof error)
       throw error
     }
   }
 
   async generateSync(request: ComposerRequest): Promise<GenerationResult> {
     try {
-      // Get persona from database
-      const dbPersona = await prisma.persona.findUnique({
-        where: { id: request.personaId }
-      })
-
-      if (!dbPersona) {
-        throw new Error('Persona not found')
+      console.log('🔍 Starting generateSync with request:', request)
+      
+      // Use mock persona for now
+      const mockPersona = {
+        id: request.personaId,
+        name: 'Mock Persona',
+        tone: ['professional', 'insightful'],
+        cadence: 'detailed',
+        donts: ['use slang'],
+        hookPatterns: ['Data-driven insights'],
+        ctaStyle: 'direct',
+        platforms: {}
       }
 
+      console.log('🤖 Using mock persona:', mockPersona)
+
       // Create persona engine
-      const personaEngine = PersonaEngine.fromDatabasePersona(dbPersona)
+      const personaEngine = PersonaEngine.fromDatabasePersona(mockPersona)
+      console.log('⚙️ PersonaEngine created successfully')
 
       // Build content request
       const contentRequest: ContentRequest = {
@@ -121,21 +144,31 @@ export class ComposerService {
     request: ContentRequest
   ): Promise<GenerationResult> {
     const startTime = Date.now()
+    console.log('🦙 Starting Ollama generation...')
 
     try {
       // Build prompts
       const systemPrompt = personaEngine.buildSystemMessage('compose', request.platform)
       const userPrompt = personaEngine.buildPrompt(request)
+      console.log('📝 Prompts built:', { systemPrompt: systemPrompt.slice(0, 100) + '...', userPrompt })
 
       // Call Ollama API
       const ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
-      const model = process.env.OLLAMA_MODEL || 'llama3.1:8b'
+      const model = 'llama3.1:8b' // Force use of faster model for development
+      console.log('🌐 Calling Ollama:', { ollamaUrl, model })
+      console.log('🔧 Environment check:', { 
+        OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL,
+        OLLAMA_MODEL: process.env.OLLAMA_MODEL,
+        NODE_ENV: process.env.NODE_ENV
+      })
 
       const variants: ContentVariant[] = []
       const variantCount = request.options.variants || 3
 
       // Generate multiple variants
       for (let i = 0; i < variantCount; i++) {
+        console.log(`🔄 Generating variant ${i + 1}/${variantCount}...`)
+        
         const response = await fetch(`${ollamaUrl}/api/generate`, {
           method: 'POST',
           headers: {
@@ -152,6 +185,8 @@ export class ComposerService {
             }
           })
         })
+        
+        console.log(`📡 Ollama response status: ${response.status}`)
 
         if (!response.ok) {
           throw new Error(`Ollama API error: ${response.statusText}`)
@@ -159,9 +194,11 @@ export class ComposerService {
 
         const result = await response.json()
         const content = result.response.trim()
+        console.log(`📄 Generated content (${content.length} chars):`, content.slice(0, 200) + '...')
 
         // Parse the generated content into components
         const variant = this.parseGeneratedContent(content, `variant_${i + 1}`, request)
+        console.log(`📋 Parsed variant:`, JSON.stringify(variant, null, 2))
         variants.push(variant)
       }
 
