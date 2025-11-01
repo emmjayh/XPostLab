@@ -127,17 +127,53 @@ export class ComposerService {
       const systemPrompt = personaEngine.buildSystemMessage('compose', request.platform)
       const userPrompt = personaEngine.buildPrompt(request)
 
-      // For demo purposes, we'll return mock data
-      // In production, this would call Ollama directly or queue a job
-      const mockVariants: ContentVariant[] = await this.generateMockVariants(request)
+      // Call Ollama API
+      const ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
+      const model = process.env.OLLAMA_MODEL || 'llama3.1:8b'
+
+      const variants: ContentVariant[] = []
+      const variantCount = request.options.variants || 3
+
+      // Generate multiple variants
+      for (let i = 0; i < variantCount; i++) {
+        const response = await fetch(`${ollamaUrl}/api/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            prompt: `${systemPrompt}\n\nUser: ${userPrompt}\n\nAssistant: I'll create engaging ${request.platform} content based on your persona and input. Here's variant ${i + 1}:`,
+            stream: false,
+            options: {
+              temperature: 0.7 + (i * 0.1), // Vary temperature for different variants
+              top_p: 0.9,
+              max_tokens: request.options.maxLength || 280
+            }
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error(`Ollama API error: ${response.statusText}`)
+        }
+
+        const result = await response.json()
+        const content = result.response.trim()
+
+        // Parse the generated content into components
+        const variant = this.parseGeneratedContent(content, `variant_${i + 1}`, request)
+        variants.push(variant)
+      }
 
       // Validate with persona engine
-      const result = personaEngine.validateOutput(mockVariants, request)
+      const result = personaEngine.validateOutput(variants, request)
       result.metadata.processingTime = Date.now() - startTime
+      result.metadata.model = model
 
       return result
 
     } catch (error) {
+      console.error('Ollama generation error:', error)
       return {
         success: false,
         variants: [],
@@ -150,7 +186,69 @@ export class ComposerService {
     }
   }
 
-  // Mock generation for demo purposes
+  private parseGeneratedContent(content: string, variantId: string, request: ContentRequest): ContentVariant {
+    // Simple parsing - in production you might want more sophisticated parsing
+    const lines = content.split('\n').filter(line => line.trim().length > 0)
+    
+    // Try to extract hook, body, and CTA from the content
+    let hook = ''
+    let body = content
+    let cta = ''
+    
+    // Look for common patterns
+    const hookPatterns = [
+      /^(Here's what.*?[:.])/i,
+      /^(Unpopular opinion[:.])/i,
+      /^(Quick thread on.*?[:.])/i,
+      /^(What if I told you.*?[:.])/i,
+      /^(After \d+ years.*?[:.])/i
+    ]
+    
+    for (const pattern of hookPatterns) {
+      const match = content.match(pattern)
+      if (match) {
+        hook = match[1]
+        body = content.replace(pattern, '').trim()
+        break
+      }
+    }
+    
+    // Extract CTA (usually at the end)
+    const ctaPatterns = [
+      /\n\n(.+[?!])\s*$/,
+      /\n\n(What are your thoughts\?.*?)$/i,
+      /\n\n(Drop your.*?)$/i,
+      /\n\n(Agree or disagree\?.*?)$/i
+    ]
+    
+    for (const pattern of ctaPatterns) {
+      const match = body.match(pattern)
+      if (match) {
+        cta = match[1]
+        body = body.replace(pattern, '').trim()
+        break
+      }
+    }
+    
+    // Generate hashtags if requested
+    const hashtags = request.options.includeHashtags ? this.generateHashtags(request.platform) : []
+    
+    return {
+      id: variantId,
+      content: content,
+      hook: hook || "Here's something interesting:",
+      body: body || content,
+      cta: cta || "What are your thoughts?",
+      hashtags,
+      metadata: {
+        length: content.length,
+        sentiment: 'positive', // Could be enhanced with sentiment analysis
+        hookType: this.getHookType(hook)
+      }
+    }
+  }
+
+  // Mock generation for demo purposes (kept as fallback)
   private async generateMockVariants(request: ContentRequest): Promise<ContentVariant[]> {
     const variants: ContentVariant[] = []
     const variantCount = request.options.variants || 3
