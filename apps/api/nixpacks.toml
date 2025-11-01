@@ -1,0 +1,17 @@
+[phases.setup]
+nixPkgs = ['nodejs_18', 'pnpm']
+
+[phases.install]
+cmds = [
+    'cd ../..',
+    'pnpm install --frozen-lockfile'
+]
+
+[phases.build]
+cmds = [
+    'cd ../..',
+    'pnpm run build --filter=@ai-content-coach/api'
+]
+
+[start]
+cmd = 'cd ../../apps/api && pnpm start'

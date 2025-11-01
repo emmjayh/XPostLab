@@ -1,0 +1,9 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "cd ../.. && pnpm install && pnpm build --filter=@ai-content-coach/web"
+
+[deploy]
+startCommand = "cd apps/web && pnpm start"
+healthcheckPath = "/"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
