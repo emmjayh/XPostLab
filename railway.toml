@@ -1,0 +1,47 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "echo 'Please specify a start command for this service'"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+
+[[services]]
+name = "web"
+source = "apps/web"
+
+[services.variables]
+PORT = "3000"
+NODE_ENV = "production"
+
+[[services]]
+name = "api"
+source = "apps/api"
+
+[services.variables]
+PORT = "8000"
+NODE_ENV = "production"
+
+[[services]]
+name = "worker"
+source = "apps/worker"
+
+[services.variables]
+NODE_ENV = "production"
+
+[[services]]
+name = "webhooks"
+source = "apps/webhooks"
+
+[services.variables]
+PORT = "8001"
+NODE_ENV = "production"
+
+[[services]]
+name = "postgres"
+type = "postgresql"
+
+[[services]]
+name = "redis"
+type = "redis"
