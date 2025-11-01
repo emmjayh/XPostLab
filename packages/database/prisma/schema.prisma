@@ -33,12 +33,12 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String? // Removed @db.Text for SQLite compatibility
+  access_token      String? // Removed @db.Text for SQLite compatibility
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String? // Removed @db.Text for SQLite compatibility
   session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -67,15 +67,15 @@ model Persona {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Voiceprint configuration
-  tone         String[] // ["professional", "casual", "humorous"]
-  cadence      String   // "concise", "detailed", "conversational"
-  donts        String[] // ["use corporate speak", "be overly promotional"]
-  hookPatterns String[] // ["Question hooks", "Contrarian takes", "Personal stories"]
+  // Voiceprint configuration (stored as JSON strings in SQLite)
+  tone         String // JSON: ["professional", "casual", "humorous"]
+  cadence      String // "concise", "detailed", "conversational"
+  donts        String // JSON: ["use corporate speak", "be overly promotional"]
+  hookPatterns String // JSON: ["Question hooks", "Contrarian takes", "Personal stories"]
   ctaStyle     String   // "direct", "soft", "question-based"
   
-  // Platform-specific settings
-  platforms Json @default("{}")
+  // Platform-specific settings (stored as JSON string for SQLite compatibility)
+  platforms String @default("{}")
 
   // Relations
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -96,8 +96,8 @@ model Post {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Platform-specific data
-  platformData Json @default("{}")
+  // Platform-specific data (stored as JSON string for SQLite compatibility)
+  platformData String @default("{}")
   
   // Analytics
   views        Int @default(0)
@@ -118,36 +118,24 @@ model Post {
 }
 
 // Job processing system
-enum JobStatus {
-  QUEUED
-  RUNNING
-  COMPLETED
-  FAILED
-  CANCELLED
-}
+// JobStatus enum converted to String for SQLite compatibility
+// Valid values: "QUEUED", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"
 
-enum JobType {
-  BRAIN_DUMP
-  COMPOSE
-  REPLY_GENERATION
-  ALGO_ANALYSIS
-  ACCOUNT_RESEARCH
-  AVATAR_GENERATION
-  HISTORY_ANALYSIS
-}
+// JobType enum converted to String for SQLite compatibility  
+// Valid values: "BRAIN_DUMP", "COMPOSE", "REPLY_GENERATION", "ALGO_ANALYSIS", "ACCOUNT_RESEARCH", "AVATAR_GENERATION", "HISTORY_ANALYSIS"
 
 model Job {
   id        String    @id @default(cuid())
   userId    String
   personaId String?
-  type      JobType
-  status    JobStatus @default(QUEUED)
+  type      String    // JobType enum converted to String - Valid values: "BRAIN_DUMP", "COMPOSE", "REPLY_GENERATION", "ALGO_ANALYSIS", "ACCOUNT_RESEARCH", "AVATAR_GENERATION", "HISTORY_ANALYSIS"
+  status    String    @default("QUEUED") // JobStatus enum converted to String - Valid values: "QUEUED", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   
-  // Job data
-  input  Json
-  output Json?
+  // Job data (stored as JSON strings for SQLite compatibility)
+  input  String
+  output String?
   error  String?
   
   // Processing metadata
@@ -168,7 +156,7 @@ model Insight {
   userId    String
   type      String   // "hook_performance", "posting_window", "topic_trend"
   category  String   // "composer", "timing", "engagement"
-  data      Json
+  data      String   // JSON data stored as string for SQLite compatibility
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -184,8 +172,8 @@ model Template {
   type        String   // "hook", "body", "cta", "full_post"
   platform    String   // "twitter", "linkedin", "universal"
   template    String   // The actual template with placeholders
-  variables   String[] // List of variable names
-  tags        String[] // For categorization
+  variables   String   // JSON array stored as string for SQLite compatibility - List of variable names
+  tags        String   // JSON array stored as string for SQLite compatibility - For categorization
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -202,10 +190,10 @@ model AccountProfile {
   followers   Int      @default(0)
   following   Int      @default(0)
   
-  // Analysis data
-  topTopics     String[]
-  engagementWith String[] // handles they frequently engage with
-  postingTimes   Json      // frequency analysis
+  // Analysis data (stored as JSON strings for SQLite compatibility)
+  topTopics     String   // JSON array of topics
+  engagementWith String  // JSON array of handles they frequently engage with
+  postingTimes   String  // JSON object for frequency analysis
   
   // Cache metadata
   lastAnalyzed DateTime @default(now())

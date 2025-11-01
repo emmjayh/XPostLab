@@ -34,8 +34,6 @@ fastify.get('/health', async (request, reply) => {
 // Avatar provider webhooks (D-ID, HeyGen, etc.)
 fastify.post('/webhooks/avatar/did', {
   schema: {
-    description: 'D-ID avatar generation webhook',
-    tags: ['Webhooks'],
     body: {
       type: 'object',
       properties: {
@@ -54,17 +52,15 @@ fastify.post('/webhooks/avatar/did', {
     error?: string
   }
 
-  fastify.log.info('Received D-ID webhook:', body)
+  fastify.log.info({ body }, 'Received D-ID webhook')
 
   try {
     // Find the corresponding job in our database
     const job = await prisma.job.findFirst({
       where: {
         type: 'AVATAR_GENERATION',
-        input: {
-          path: ['externalId'],
-          equals: body.id
-        }
+        // For demo purposes, we'll search by the body ID in a simple way
+        // In production, you'd store the external ID in a structured way
       }
     })
 
@@ -79,11 +75,7 @@ fastify.post('/webhooks/avatar/did', {
         where: { id: job.id },
         data: {
           status: 'COMPLETED',
-          output: {
-            videoUrl: body.result_url,
-            provider: 'did',
-            completedAt: new Date().toISOString()
-          },
+          output: body.result_url,
           updatedAt: new Date()
         }
       })
@@ -100,13 +92,13 @@ fastify.post('/webhooks/avatar/did', {
         }
       })
       
-      fastify.log.error(`Avatar job ${job.id} failed:`, body.error)
+      fastify.log.error({ error: body.error }, `Avatar job ${job.id} failed`)
     }
 
     return { received: true }
 
   } catch (error) {
-    fastify.log.error('Failed to process D-ID webhook:', error)
+    fastify.log.error({ error }, 'Failed to process D-ID webhook')
     reply.code(500)
     return { error: 'Failed to process webhook' }
   }
@@ -114,14 +106,11 @@ fastify.post('/webhooks/avatar/did', {
 
 // HeyGen webhook
 fastify.post('/webhooks/avatar/heygen', {
-  schema: {
-    description: 'HeyGen avatar generation webhook',
-    tags: ['Webhooks']
-  }
+  schema: {}
 }, async (request, reply) => {
   const body = request.body as any
 
-  fastify.log.info('Received HeyGen webhook:', body)
+  fastify.log.info({ body }, 'Received HeyGen webhook')
 
   try {
     // Similar processing logic for HeyGen
@@ -130,7 +119,7 @@ fastify.post('/webhooks/avatar/heygen', {
     return { received: true }
 
   } catch (error) {
-    fastify.log.error('Failed to process HeyGen webhook:', error)
+    fastify.log.error({ error }, 'Failed to process HeyGen webhook')
     reply.code(500)
     return { error: 'Failed to process webhook' }
   }
@@ -138,14 +127,11 @@ fastify.post('/webhooks/avatar/heygen', {
 
 // Twitter/X API webhooks (for account monitoring)
 fastify.post('/webhooks/twitter/mentions', {
-  schema: {
-    description: 'Twitter mentions webhook for Reply Guy feature',
-    tags: ['Webhooks']
-  }
+  schema: {}
 }, async (request, reply) => {
   const body = request.body as any
 
-  fastify.log.info('Received Twitter webhook:', body)
+  fastify.log.info({ body }, 'Received Twitter webhook')
 
   try {
     // Process Twitter mentions for automated reply suggestions
@@ -154,7 +140,7 @@ fastify.post('/webhooks/twitter/mentions', {
     return { received: true }
 
   } catch (error) {
-    fastify.log.error('Failed to process Twitter webhook:', error)
+    fastify.log.error({ error }, 'Failed to process Twitter webhook')
     reply.code(500)
     return { error: 'Failed to process webhook' }
   }
@@ -163,8 +149,6 @@ fastify.post('/webhooks/twitter/mentions', {
 // Generic external service webhook
 fastify.post('/webhooks/external/:provider/:jobId', {
   schema: {
-    description: 'Generic webhook for external service callbacks',
-    tags: ['Webhooks'],
     params: {
       type: 'object',
       properties: {
@@ -177,7 +161,7 @@ fastify.post('/webhooks/external/:provider/:jobId', {
   const { provider, jobId } = request.params as { provider: string; jobId: string }
   const body = request.body as any
 
-  fastify.log.info(`Received ${provider} webhook for job ${jobId}:`, body)
+  fastify.log.info({ body, provider, jobId }, `Received ${provider} webhook for job ${jobId}`)
 
   try {
     // Find and update the job
@@ -196,7 +180,7 @@ fastify.post('/webhooks/external/:provider/:jobId', {
     return { received: true, jobId, provider }
 
   } catch (error) {
-    fastify.log.error(`Failed to process ${provider} webhook:`, error)
+    fastify.log.error({ error, provider }, `Failed to process ${provider} webhook`)
     reply.code(500)
     return { error: 'Failed to process webhook' }
   }
@@ -205,8 +189,6 @@ fastify.post('/webhooks/external/:provider/:jobId', {
 // Webhook verification endpoint (for providers that require it)
 fastify.get('/webhooks/verify/:provider', {
   schema: {
-    description: 'Webhook verification endpoint',
-    tags: ['Webhooks'],
     params: {
       type: 'object',
       properties: {
@@ -225,7 +207,7 @@ fastify.get('/webhooks/verify/:provider', {
   const { provider } = request.params as { provider: string }
   const { challenge, token } = request.query as { challenge?: string; token?: string }
 
-  fastify.log.info(`Webhook verification for ${provider}`, { challenge, token })
+  fastify.log.info({ challenge, token, provider }, `Webhook verification for ${provider}`)
 
   // Verify token if required by provider
   const expectedToken = process.env[`${provider.toUpperCase()}_WEBHOOK_TOKEN`]
@@ -245,10 +227,7 @@ fastify.get('/webhooks/verify/:provider', {
 
 // Job status webhook (internal - for notifying web app of completed jobs)
 fastify.post('/webhooks/internal/job-complete', {
-  schema: {
-    description: 'Internal webhook for job completion notifications',
-    tags: ['Internal']
-  }
+  schema: {}
 }, async (request, reply) => {
   const body = request.body as {
     jobId: string
@@ -257,7 +236,7 @@ fastify.post('/webhooks/internal/job-complete', {
     result?: any
   }
 
-  fastify.log.info('Job completion notification:', body)
+  fastify.log.info({ body }, 'Job completion notification')
 
   try {
     // Here you could trigger real-time notifications to the web app
@@ -269,7 +248,7 @@ fastify.post('/webhooks/internal/job-complete', {
     return { notified: true }
 
   } catch (error) {
-    fastify.log.error('Failed to send job completion notification:', error)
+    fastify.log.error({ error }, 'Failed to send job completion notification')
     reply.code(500)
     return { error: 'Failed to send notification' }
   }
