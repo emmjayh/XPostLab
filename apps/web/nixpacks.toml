@@ -1,8 +1,15 @@
-[phases.install]
-cmds = ['cd ../.. && pnpm install --frozen-lockfile']
+[variables]
+NIXPACKS_PACKAGE_MANAGER = "pnpm"
 
-[phases.build] 
-cmds = ['cd ../.. && pnpm build --filter=@ai-content-coach/web']
+[phases.setup]
+nixPkgs = ["nodejs_18", "corepack"]
+cmds = ["corepack enable pnpm"]
+
+[phases.install]
+cmds = ["cd ../.. && pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = ["cd ../.. && pnpm build --filter=@ai-content-coach/web"]
 
 [start]
-cmd = 'cd ../../apps/web && pnpm start'
+cmd = "cd ../../apps/web && pnpm start"
