@@ -53,7 +53,7 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
 
         return personas
       } catch (error) {
-        fastify.log.error('Failed to fetch demo personas:', error)
+        fastify.log.error({ error }, 'Failed to fetch demo personas')
         // Fallback to hardcoded personas if DB fails
         return []
       }
@@ -70,7 +70,7 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
 
       return personas
     } catch (error) {
-      fastify.log.error('Failed to fetch personas:', error)
+      fastify.log.error({ error }, 'Failed to fetch personas')
       reply.code(500)
       return { error: 'Failed to fetch personas' }
     }
@@ -104,7 +104,7 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
 
       return persona
     } catch (error) {
-      fastify.log.error('Failed to fetch persona:', error)
+      fastify.log.error({ error }, 'Failed to fetch persona')
       reply.code(500)
       return { error: 'Failed to fetch persona' }
     }
@@ -172,7 +172,7 @@ const personasRoutes: FastifyPluginAsync = async (fastify) => {
 
       return persona
     } catch (error) {
-      fastify.log.error('Failed to create persona:', error)
+      fastify.log.error({ error }, 'Failed to create persona')
       reply.code(500)
       return { error: 'Failed to create persona' }
     }

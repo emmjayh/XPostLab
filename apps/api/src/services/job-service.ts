@@ -1,8 +1,7 @@
 import { prisma } from '@ai-content-coach/database'
-import { JobType, JobStatus } from '@prisma/client'
 
 export interface CreateJobRequest {
-  type: JobType
+  type: string
   personaId: string
   input: any
   priority?: number
@@ -15,7 +14,7 @@ export class JobService {
     return {
       id: `job_${Date.now()}`,
       type: request.type,
-      status: 'QUEUED' as JobStatus,
+      status: 'QUEUED',
       personaId: request.personaId,
       input: request.input,
       createdAt: new Date(),
@@ -27,7 +26,7 @@ export class JobService {
     // Mock job retrieval
     return {
       id: jobId,
-      status: 'COMPLETED' as JobStatus,
+      status: 'COMPLETED',
       result: {
         variants: [],
         metadata: {
@@ -39,12 +38,12 @@ export class JobService {
     }
   }
 
-  async getJobsByUser(userId: string, status?: JobStatus) {
+  async getJobsByUser(userId: string, status?: string) {
     // Would query the database for user's jobs
     return []
   }
 
-  async updateJobStatus(jobId: string, status: JobStatus, result?: any, error?: string) {
+  async updateJobStatus(jobId: string, status: string, result?: any, error?: string) {
     // Would update job in database
     return {
       id: jobId,

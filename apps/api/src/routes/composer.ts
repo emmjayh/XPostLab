@@ -99,7 +99,7 @@ const composerRoutes: FastifyPluginAsync = async (fastify) => {
       const result = await composerService.generateFromBrainDump(body)
       return result
     } catch (error) {
-      fastify.log.error('Brain dump generation failed:', error)
+      fastify.log.error({ error }, 'Brain dump generation failed')
       reply.code(500)
       return {
         success: false,
@@ -159,7 +159,7 @@ const composerRoutes: FastifyPluginAsync = async (fastify) => {
 
       return job
     } catch (error) {
-      fastify.log.error('Failed to get job status:', error)
+      fastify.log.error({ error }, 'Failed to get job status')
       reply.code(500)
       return {
         error: error instanceof Error ? error.message : 'Internal server error'
@@ -201,7 +201,7 @@ const composerRoutes: FastifyPluginAsync = async (fastify) => {
       const result = await composerService.generateSync(body)
       return result
     } catch (error) {
-      fastify.log.error('Sync composition failed:', error)
+      fastify.log.error({ error }, 'Sync composition failed')
       reply.code(500)
       return {
         success: false,

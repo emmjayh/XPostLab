@@ -106,6 +106,7 @@ export class ComposerService {
     } catch (error) {
       return {
         success: false,
+        variants: [],
         error: error instanceof Error ? error.message : 'Unknown error',
         metadata: {
           personaUsed: request.personaId,
@@ -139,6 +140,7 @@ export class ComposerService {
     } catch (error) {
       return {
         success: false,
+        variants: [],
         error: error instanceof Error ? error.message : 'Generation failed',
         metadata: {
           personaUsed: request.personaId,

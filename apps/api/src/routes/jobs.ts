@@ -56,7 +56,7 @@ const jobsRoutes: FastifyPluginAsync = async (fastify) => {
       const jobs = await jobService.getJobsByUser(userId, status)
       return jobs
     } catch (error) {
-      fastify.log.error('Failed to fetch jobs:', error)
+      fastify.log.error({ error }, 'Failed to fetch jobs')
       reply.code(500)
       return { error: 'Failed to fetch jobs' }
     }
@@ -88,7 +88,7 @@ const jobsRoutes: FastifyPluginAsync = async (fastify) => {
 
       return job
     } catch (error) {
-      fastify.log.error('Failed to fetch job:', error)
+      fastify.log.error({ error }, 'Failed to fetch job')
       reply.code(500)
       return { error: 'Failed to fetch job' }
     }
@@ -119,7 +119,7 @@ const jobsRoutes: FastifyPluginAsync = async (fastify) => {
       // For now, return empty array (in production, query database)
       return []
     } catch (error) {
-      fastify.log.error('Failed to fetch pending jobs:', error)
+      fastify.log.error({ error }, 'Failed to fetch pending jobs')
       reply.code(500)
       return { error: 'Failed to fetch pending jobs' }
     }
@@ -182,7 +182,7 @@ const jobsRoutes: FastifyPluginAsync = async (fastify) => {
 
       return { success: true, job: updatedJob }
     } catch (error) {
-      fastify.log.error('Failed to update job result:', error)
+      fastify.log.error({ error }, 'Failed to update job result')
       reply.code(500)
       return { error: 'Failed to update job result' }
     }
