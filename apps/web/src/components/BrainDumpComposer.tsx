@@ -15,6 +15,10 @@ interface ContentVariant {
     length: number
     sentiment?: string
     hookType?: string
+    wasTruncated?: boolean
+    originalLength?: number
+    overLimit?: number
+    originalContent?: string
   }
 }
 
@@ -76,6 +80,41 @@ export function BrainDumpComposer() {
   const handleClear = () => {
     setInput('')
     setResult(null)
+  }
+
+  const handleRework = async (originalContent: string, charLimit: number) => {
+    setIsGenerating(true)
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/composer/brain-dump`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          input: `Make this content SHORTER to fit under ${charLimit} characters:\n\n${originalContent}`,
+          personaId: selectedPersona,
+          platform: selectedPlatform,
+          options: {
+            variants: 1,
+            includeHashtags,
+            maxLength: charLimit - 20 // Give it extra room
+          }
+        })
+      })
+
+      const data = await response.json()
+
+      // Replace the result with the reworked version
+      if (data.success && data.variants && data.variants.length > 0) {
+        setResult(data)
+      }
+
+    } catch (error) {
+      console.error('Rework failed:', error)
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   return (
@@ -219,7 +258,11 @@ Examples:
 
       {/* Results */}
       {result && (
-        <ContentVariants result={result} platform={selectedPlatform} />
+        <ContentVariants
+          result={result}
+          platform={selectedPlatform}
+          onRework={handleRework}
+        />
       )}
     </div>
   )
