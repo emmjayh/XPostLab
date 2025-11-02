@@ -30,7 +30,7 @@ interface GenerationResult {
 interface ContentVariantsProps {
   result: GenerationResult
   platform: string
-  onRework?: (originalContent: string, charLimit: number) => void
+  onRework?: (variantId: string, originalContent: string, charLimit: number) => void
 }
 
 export function ContentVariants({ result, platform, onRework }: ContentVariantsProps) {
@@ -54,7 +54,7 @@ export function ContentVariants({ result, platform, onRework }: ContentVariantsP
     const platformLimits = { twitter: 280, linkedin: 3000, instagram: 2200 }
     const charLimit = platformLimits[platform as keyof typeof platformLimits] || 280
 
-    onRework(variant.metadata.originalContent, charLimit)
+    onRework(variant.id, variant.metadata.originalContent, charLimit)
     setTimeout(() => setReworking(null), 3000)
   }
 

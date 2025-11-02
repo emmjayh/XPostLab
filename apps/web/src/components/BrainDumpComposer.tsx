@@ -82,7 +82,7 @@ export function BrainDumpComposer() {
     setResult(null)
   }
 
-  const handleRework = async (originalContent: string, charLimit: number) => {
+  const handleRework = async (variantId: string, originalContent: string, charLimit: number) => {
     setIsGenerating(true)
 
     try {
@@ -105,9 +105,17 @@ export function BrainDumpComposer() {
 
       const data = await response.json()
 
-      // Replace the result with the reworked version
-      if (data.success && data.variants && data.variants.length > 0) {
-        setResult(data)
+      // Replace only the specific variant that was reworked
+      if (data.success && data.variants && data.variants.length > 0 && result) {
+        const reworkedVariant = data.variants[0]
+        const updatedVariants = result.variants?.map(v =>
+          v.id === variantId ? { ...reworkedVariant, id: variantId } : v
+        )
+
+        setResult({
+          ...result,
+          variants: updatedVariants
+        })
       }
 
     } catch (error) {
