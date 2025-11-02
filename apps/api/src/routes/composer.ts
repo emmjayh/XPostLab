@@ -74,7 +74,11 @@ const composerRoutes: FastifyPluginAsync = async (fastify) => {
                     properties: {
                       length: { type: 'number' },
                       sentiment: { type: 'string' },
-                      hookType: { type: 'string' }
+                      hookType: { type: 'string' },
+                      wasTruncated: { type: 'boolean' },
+                      originalLength: { type: 'number' },
+                      overLimit: { type: 'number' },
+                      originalContent: { type: 'string' }
                     }
                   }
                 }

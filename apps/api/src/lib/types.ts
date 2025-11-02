@@ -42,7 +42,11 @@ export const ContentVariantSchema = z.object({
     length: z.number(),
     sentiment: z.string().optional(),
     readability: z.number().optional(),
-    hookType: z.string().optional()
+    hookType: z.string().optional(),
+    wasTruncated: z.boolean().optional(),
+    originalLength: z.number().optional(),
+    overLimit: z.number().optional(),
+    originalContent: z.string().optional()
   })
 })
 
