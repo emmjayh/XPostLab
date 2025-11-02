@@ -182,19 +182,17 @@ export class ComposerService {
         const charLimit = request.options.maxLength || 280
 
         // Build a prompt that asks for JUST ONE variant
-        const singleVariantPrompt = `Create ONE single ${request.platform} post from this: "${request.input}"
+        const singleVariantPrompt = `Write a ${request.platform} post from: "${request.input}"
 
-STRICT RULES:
-- Maximum ${charLimit} characters TOTAL
-- Use a ${i === 0 ? 'question-based' : i === 1 ? 'insight-based' : 'story-based'} hook
-- Be concise and punchy
-- DO NOT include "Variant #1" or any labels
-- DO NOT use markdown formatting like ** or ##
+CRITICAL: Total must be under ${charLimit} characters!
 
-Return ONLY this format (nothing else):
-Hook: [one short sentence]
-Body: [one or two short sentences]
-CTA: [one short question or action]`
+Format:
+Hook: [5-8 words max]
+Body: [10-15 words max]
+CTA: [3-5 words max]
+
+Style: ${i === 0 ? 'question' : i === 1 ? 'insight' : 'story'}-based hook
+NO labels, NO markdown, NO extra text`
 
         const response = await fetch(`${ollamaUrl}/api/generate`, {
           method: 'POST',
@@ -206,9 +204,10 @@ CTA: [one short question or action]`
             prompt: `${systemPrompt}\n\n${singleVariantPrompt}`,
             stream: false,
             options: {
-              temperature: 0.7 + (i * 0.1), // Vary temperature for different variants
-              top_p: 0.9,
-              num_predict: Math.min(Math.floor((request.options.maxLength || 280) * 0.8), 150) // Much stricter token limit
+              temperature: 0.3 + (i * 0.1), // Lower temperature for more concise output
+              top_p: 0.85,
+              num_predict: 80, // Very strict token limit to force brevity
+              stop: ['\n\n', 'Variant', '**'] // Stop at double newline or variant markers
             }
           })
         })
