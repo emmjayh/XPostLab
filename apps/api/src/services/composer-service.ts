@@ -182,20 +182,19 @@ export class ComposerService {
         const charLimit = request.options.maxLength || 280
 
         // Build a prompt that asks for JUST ONE variant
-        const singleVariantPrompt = `Create a single ${request.platform} post from this brain dump:
+        const singleVariantPrompt = `Create ONE single ${request.platform} post from this: "${request.input}"
 
-INPUT: ${request.input}
-PLATFORM: ${request.platform}
-CHARACTER LIMIT: ${charLimit} characters maximum
+STRICT RULES:
+- Maximum ${charLimit} characters TOTAL
+- Use a ${i === 0 ? 'question-based' : i === 1 ? 'insight-based' : 'story-based'} hook
+- Be concise and punchy
+- DO NOT include "Variant #1" or any labels
+- DO NOT use markdown formatting like ** or ##
 
-CRITICAL: The TOTAL LENGTH of hook + body + CTA combined must be UNDER ${charLimit} characters!
-
-Create variant #${i + 1} with a ${i === 0 ? 'question-based' : i === 1 ? 'insight-based' : 'story-based'} approach.
-
-Return ONLY the content in this exact format (no extra text):
-Hook: [attention-grabbing opening]
-Body: [main value/insight]
-CTA: [call to action]`
+Return ONLY this format (nothing else):
+Hook: [one short sentence]
+Body: [one or two short sentences]
+CTA: [one short question or action]`
 
         const response = await fetch(`${ollamaUrl}/api/generate`, {
           method: 'POST',
@@ -209,7 +208,7 @@ CTA: [call to action]`
             options: {
               temperature: 0.7 + (i * 0.1), // Vary temperature for different variants
               top_p: 0.9,
-              num_predict: Math.min(Math.floor((request.options.maxLength || 280) * 0.6), 500) // Limit based on char limit
+              num_predict: Math.min(Math.floor((request.options.maxLength || 280) * 0.8), 150) // Much stricter token limit
             }
           })
         })
@@ -257,14 +256,14 @@ CTA: [call to action]`
     let body = ''
     let cta = ''
 
-    // Extract Hook, Body, and CTA using regex
-    const hookMatch = content.match(/Hook:\s*(.+?)(?=\nBody:|$)/is)
-    const bodyMatch = content.match(/Body:\s*(.+?)(?=\nCTA:|$)/is)
-    const ctaMatch = content.match(/CTA:\s*(.+?)$/is)
+    // Extract Hook, Body, and CTA using regex (handle both markdown ** and plain formats)
+    const hookMatch = content.match(/\*\*Hook:\*\*\s*(.+?)(?=\n|$)/is) || content.match(/Hook:\s*(.+?)(?=\nBody:|\n\*\*Body:|\n|$)/is)
+    const bodyMatch = content.match(/\*\*Body:\*\*\s*(.+?)(?=\n|$)/is) || content.match(/Body:\s*(.+?)(?=\nCTA:|\n\*\*CTA:|\n|$)/is)
+    const ctaMatch = content.match(/\*\*CTA:\*\*\s*(.+?)$/is) || content.match(/CTA:\s*(.+?)$/is)
 
-    if (hookMatch) hook = hookMatch[1].trim()
-    if (bodyMatch) body = bodyMatch[1].trim()
-    if (ctaMatch) cta = ctaMatch[1].trim()
+    if (hookMatch) hook = hookMatch[1].trim().replace(/\*\*/g, '') // Remove any ** markdown
+    if (bodyMatch) body = bodyMatch[1].trim().replace(/\*\*/g, '')
+    if (ctaMatch) cta = ctaMatch[1].trim().replace(/\*\*/g, '')
 
     // Fallback: if parsing failed, use the whole content as body
     if (!hook && !body && !cta) {
