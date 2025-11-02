@@ -44,9 +44,13 @@ const fastify = Fastify({
 
 // Register plugins
 fastify.register(cors, {
-  origin: process.env.NODE_ENV === 'production' 
-    ? [process.env.WEB_URL || 'https://ai-content-coach.railway.app']
-    : true
+  origin: [
+    'https://xpostlab.com',
+    'https://ai-content-coach.railway.app',
+    'http://localhost:3000',
+    'http://localhost:3001'
+  ],
+  credentials: true
 })
 
 fastify.register(helmet)
