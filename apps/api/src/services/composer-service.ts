@@ -307,6 +307,7 @@ CTA: [call to action]`
     if (!hook) hook = "Here's something interesting:"
     if (!body) body = content
     if (!cta) cta = "What are your thoughts?"
+  }
 
     // Generate hashtags if requested
     const hashtags = request.options.includeHashtags ? this.generateHashtags(request.platform) : []
