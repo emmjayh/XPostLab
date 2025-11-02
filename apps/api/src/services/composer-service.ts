@@ -8,7 +8,7 @@ export interface ComposerRequest {
   platform: 'twitter' | 'linkedin' | 'instagram'
   options?: {
     variants?: number
-    maxLength?: number
+    maxLength?: number // Custom character limit (defaults based on platform)
     includeHashtags?: boolean
   }
 }
@@ -29,17 +29,18 @@ export class ComposerService {
     try {
       console.log('🎯 generateFromBrainDump called with:', JSON.stringify(request, null, 2))
 
-      // Use mock persona validation for now
-      const mockPersonas = ['persona-1', 'persona-2']
-      if (!mockPersonas.includes(request.personaId)) {
-        console.error('❌ Persona not found:', request.personaId)
-        throw new Error('Persona not found')
+      // Accept any persona ID for now since we're using mock data
+      // In production, this would validate against the database
+      if (!request.personaId || request.personaId.trim() === '') {
+        console.error('❌ Persona ID is required')
+        throw new Error('Persona ID is required')
       }
 
-      console.log('✅ Persona validated:', request.personaId)
+      console.log('✅ Persona ID received:', request.personaId)
 
-      // For simple requests, generate synchronously
-      const shouldGenerateSync = (request.options?.variants || 3) <= 2 && request.input.length < 500
+      // Process everything synchronously for now (no job queue implemented yet)
+      // In production, we'll queue jobs for large batches (>5 variants or very long input)
+      const shouldGenerateSync = (request.options?.variants || 3) <= 5 && request.input.length < 2000
       console.log('🤔 Should generate sync?', shouldGenerateSync, {
         variants: request.options?.variants || 3,
         inputLength: request.input.length
@@ -101,6 +102,14 @@ export class ComposerService {
       const personaEngine = PersonaEngine.fromDatabasePersona(mockPersona)
       console.log('⚙️ PersonaEngine created successfully')
 
+      // Determine max length based on platform or user override
+      const platformDefaults = {
+        twitter: 280,
+        linkedin: 3000,
+        instagram: 2200
+      }
+      const maxLength = request.options?.maxLength || platformDefaults[request.platform]
+
       // Build content request
       const contentRequest: ContentRequest = {
         type: 'brain_dump',
@@ -109,7 +118,7 @@ export class ComposerService {
         platform: request.platform,
         options: {
           variants: request.options?.variants || 3,
-          maxLength: request.options?.maxLength,
+          maxLength: maxLength,
           includeHashtags: request.options?.includeHashtags || false
         }
       }
@@ -165,10 +174,29 @@ export class ComposerService {
       const variants: ContentVariant[] = []
       const variantCount = request.options.variants || 3
 
-      // Generate multiple variants
+      // Generate multiple variants ONE AT A TIME
       for (let i = 0; i < variantCount; i++) {
         console.log(`🔄 Generating variant ${i + 1}/${variantCount}...`)
-        
+
+        // Get the character limit from request
+        const charLimit = request.options.maxLength || 280
+
+        // Build a prompt that asks for JUST ONE variant
+        const singleVariantPrompt = `Create a single ${request.platform} post from this brain dump:
+
+INPUT: ${request.input}
+PLATFORM: ${request.platform}
+CHARACTER LIMIT: ${charLimit} characters maximum
+
+CRITICAL: The TOTAL LENGTH of hook + body + CTA combined must be UNDER ${charLimit} characters!
+
+Create variant #${i + 1} with a ${i === 0 ? 'question-based' : i === 1 ? 'insight-based' : 'story-based'} approach.
+
+Return ONLY the content in this exact format (no extra text):
+Hook: [attention-grabbing opening]
+Body: [main value/insight]
+CTA: [call to action]`
+
         const response = await fetch(`${ollamaUrl}/api/generate`, {
           method: 'POST',
           headers: {
@@ -176,12 +204,12 @@ export class ComposerService {
           },
           body: JSON.stringify({
             model,
-            prompt: `${systemPrompt}\n\nUser: ${userPrompt}\n\nAssistant: I'll create engaging ${request.platform} content based on your persona and input. Here's variant ${i + 1}:`,
+            prompt: `${systemPrompt}\n\n${singleVariantPrompt}`,
             stream: false,
             options: {
               temperature: 0.7 + (i * 0.1), // Vary temperature for different variants
               top_p: 0.9,
-              max_tokens: request.options.maxLength || 280
+              num_predict: Math.min(Math.floor((request.options.maxLength || 280) * 0.6), 500) // Limit based on char limit
             }
           })
         })
@@ -224,18 +252,26 @@ export class ComposerService {
   }
 
   private parseGeneratedContent(content: string, variantId: string, request: ContentRequest): ContentVariant {
-    // Simple parsing - in production you might want more sophisticated parsing
-    const lines = content.split('\n').filter(line => line.trim().length > 0)
-    
-    // Try to extract hook, body, and CTA from the content
+    // Parse the Hook/Body/CTA format
     let hook = ''
-    let body = content
+    let body = ''
     let cta = ''
-    
-    // Look for common patterns
-    const hookPatterns = [
-      /^(Here's what.*?[:.])/i,
-      /^(Unpopular opinion[:.])/i,
+
+    // Extract Hook, Body, and CTA using regex
+    const hookMatch = content.match(/Hook:\s*(.+?)(?=\nBody:|$)/is)
+    const bodyMatch = content.match(/Body:\s*(.+?)(?=\nCTA:|$)/is)
+    const ctaMatch = content.match(/CTA:\s*(.+?)$/is)
+
+    if (hookMatch) hook = hookMatch[1].trim()
+    if (bodyMatch) body = bodyMatch[1].trim()
+    if (ctaMatch) cta = ctaMatch[1].trim()
+
+    // Fallback: if parsing failed, use the whole content as body
+    if (!hook && !body && !cta) {
+      // Try old common patterns
+      const hookPatterns = [
+        /^(Here's what.*?[:.])/i,
+        /^(Unpopular opinion[:.])/i,
       /^(Quick thread on.*?[:.])/i,
       /^(What if I told you.*?[:.])/i,
       /^(After \d+ years.*?[:.])/i
@@ -267,18 +303,27 @@ export class ComposerService {
       }
     }
     
+    // Use fallbacks if parsing failed
+    if (!hook) hook = "Here's something interesting:"
+    if (!body) body = content
+    if (!cta) cta = "What are your thoughts?"
+
     // Generate hashtags if requested
     const hashtags = request.options.includeHashtags ? this.generateHashtags(request.platform) : []
-    
+
+    // Calculate the ACTUAL content length (what will be posted)
+    const actualContent = `${hook} ${body} ${cta}`.trim()
+    const actualLength = actualContent.length
+
     return {
       id: variantId,
-      content: content,
-      hook: hook || "Here's something interesting:",
-      body: body || content,
-      cta: cta || "What are your thoughts?",
+      content: actualContent, // Use the combined content, not the raw Ollama response
+      hook,
+      body,
+      cta,
       hashtags,
       metadata: {
-        length: content.length,
+        length: actualLength, // Use the ACTUAL tweet length
         sentiment: 'positive', // Could be enhanced with sentiment analysis
         hookType: this.getHookType(hook)
       }

@@ -39,7 +39,9 @@ const composerRoutes: FastifyPluginAsync = async (fastify) => {
               },
               maxLength: {
                 type: 'number',
-                description: 'Override platform default max length'
+                minimum: 100,
+                maximum: 5000,
+                description: 'Custom character limit (defaults: Twitter=280, LinkedIn=3000, Instagram=2200)'
               },
               includeHashtags: {
                 type: 'boolean',

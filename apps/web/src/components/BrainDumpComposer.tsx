@@ -31,6 +31,7 @@ export function BrainDumpComposer() {
   const [selectedPlatform, setSelectedPlatform] = useState<'twitter' | 'linkedin' | 'instagram'>('twitter')
   const [variants, setVariants] = useState(3)
   const [includeHashtags, setIncludeHashtags] = useState(false)
+  const [characterLimit, setCharacterLimit] = useState(280)
   const [isGenerating, setIsGenerating] = useState(false)
   const [result, setResult] = useState<GenerationResult | null>(null)
 
@@ -52,7 +53,8 @@ export function BrainDumpComposer() {
           platform: selectedPlatform,
           options: {
             variants,
-            includeHashtags
+            includeHashtags,
+            maxLength: characterLimit
           }
         })
       })
@@ -121,7 +123,13 @@ Examples:
                 </label>
                 <select
                   value={selectedPlatform}
-                  onChange={(e) => setSelectedPlatform(e.target.value as typeof selectedPlatform)}
+                  onChange={(e) => {
+                    const platform = e.target.value as typeof selectedPlatform
+                    setSelectedPlatform(platform)
+                    // Auto-update character limit based on platform
+                    const defaults = { twitter: 280, linkedin: 3000, instagram: 2200 }
+                    setCharacterLimit(defaults[platform])
+                  }}
                   className="input"
                 >
                   <option value="twitter">Twitter</option>
@@ -142,6 +150,25 @@ Examples:
                   onChange={(e) => setVariants(parseInt(e.target.value))}
                   className="w-full"
                 />
+              </div>
+
+              <div>
+                <label htmlFor="char-limit" className="block text-sm font-medium text-gray-700 mb-2">
+                  Character Limit
+                </label>
+                <input
+                  type="number"
+                  id="char-limit"
+                  min="100"
+                  max="5000"
+                  value={characterLimit}
+                  onChange={(e) => setCharacterLimit(parseInt(e.target.value))}
+                  className="input w-full"
+                  placeholder="280"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Default: Twitter (280), LinkedIn (3000), Instagram (2200)
+                </p>
               </div>
 
               <div className="flex items-center">
