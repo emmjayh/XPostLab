@@ -83,6 +83,8 @@ fastify.get('/health', async (request, reply) => {
 
 // Register routes
 fastify.register(async function (fastify) {
+  await fastify.register(import('./routes/auth'))
+  await fastify.register(import('./routes/uploads'))
   await fastify.register(import('./routes/composer'))
   await fastify.register(import('./routes/personas'))
   await fastify.register(import('./routes/jobs'))

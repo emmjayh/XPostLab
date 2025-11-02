@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -11,15 +11,17 @@ datasource db {
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
+  password  String   // bcrypt hashed password
   name      String?
   image     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  personas  Persona[]
-  posts     Post[]
-  jobs      Job[]
+  personas       Persona[]
+  posts          Post[]
+  jobs           Job[]
+  contentUploads ContentUpload[]
 
   @@map("users")
 }
@@ -125,4 +127,46 @@ model Template {
   updatedAt   DateTime @updatedAt
 
   @@map("templates")
+}
+
+// Content uploads from CSV files
+model ContentUpload {
+  id           String   @id @default(cuid())
+  userId       String
+  filename     String
+  originalName String
+  platform     String   // "twitter", "linkedin", "instagram"
+  status       String   @default("PROCESSING") // "PROCESSING", "ANALYZED", "FAILED"
+  totalPosts   Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Analysis results (JSON string)
+  analysis String?
+  error    String?
+
+  // Relations
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analyzedPosts AnalyzedPost[]
+
+  @@map("content_uploads")
+}
+
+// Individual posts extracted from uploads
+model AnalyzedPost {
+  id              String   @id @default(cuid())
+  uploadId        String
+  content         String
+  platform        String
+  originalDate    DateTime?
+  engagementScore Float    @default(0)
+  createdAt       DateTime @default(now())
+
+  // Post metadata (JSON string)
+  metadata String @default("{}")
+
+  // Relations
+  upload ContentUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@map("analyzed_posts")
 }
