@@ -8,7 +8,8 @@ export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [username, setUsername] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
@@ -24,7 +25,21 @@ export default function LoginPage() {
       if (isLogin) {
         await login(email, password)
       } else {
-        await register(email, password, name)
+        // Validate passwords match
+        if (password !== confirmPassword) {
+          setError('Passwords do not match')
+          setIsLoading(false)
+          return
+        }
+
+        // Validate password length
+        if (password.length < 6) {
+          setError('Password must be at least 6 characters')
+          setIsLoading(false)
+          return
+        }
+
+        await register(email, password, username)
       }
       router.push('/') // Redirect to home after successful login/register
     } catch (err) {
@@ -59,17 +74,17 @@ export default function LoginPage() {
           <div className="rounded-md shadow-sm -space-y-px">
             {!isLogin && (
               <div>
-                <label htmlFor="name" className="sr-only">
-                  Full Name
+                <label htmlFor="username" className="sr-only">
+                  Username
                 </label>
                 <input
-                  id="name"
-                  name="name"
+                  id="username"
+                  name="username"
                   type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm"
-                  placeholder="Full Name"
+                  placeholder="Username"
                 />
               </div>
             )}
@@ -103,10 +118,30 @@ export default function LoginPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm"
+                className={`appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 ${
+                  isLogin ? 'rounded-b-md' : ''
+                } focus:outline-none focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm`}
                 placeholder="Password"
               />
             </div>
+            {!isLogin && (
+              <div>
+                <label htmlFor="confirmPassword" className="sr-only">
+                  Confirm Password
+                </label>
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm"
+                  placeholder="Confirm Password"
+                />
+              </div>
+            )}
           </div>
 
           {error && (
