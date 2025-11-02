@@ -156,43 +156,33 @@ export class ComposerService {
     console.log('🦙 Starting Ollama generation...')
 
     try {
-      // Build prompts
-      const systemPrompt = personaEngine.buildSystemMessage('compose', request.platform)
-      const userPrompt = personaEngine.buildPrompt(request)
-      console.log('📝 Prompts built:', { systemPrompt: systemPrompt.slice(0, 100) + '...', userPrompt })
-
-      // Call Ollama API
+      // Call Ollama API directly with simple prompt (bypass PersonaEngine for now)
       const ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
-      const model = process.env.OLLAMA_MODEL || 'gpt-oss:20b'
+      const model = 'llama3.1:8b' // Use llama3.1 which we know works
       console.log('🌐 Calling Ollama:', { ollamaUrl, model })
-      console.log('🔧 Environment check:', { 
-        OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL,
-        OLLAMA_MODEL: process.env.OLLAMA_MODEL,
-        NODE_ENV: process.env.NODE_ENV
-      })
 
       const variants: ContentVariant[] = []
       const variantCount = request.options.variants || 3
+      const charLimit = request.options.maxLength || 280
 
       // Generate multiple variants ONE AT A TIME
       for (let i = 0; i < variantCount; i++) {
         console.log(`🔄 Generating variant ${i + 1}/${variantCount}...`)
 
-        // Get the character limit from request
-        const charLimit = request.options.maxLength || 280
+        // Very simple prompt that works
+        const hookStyle = i === 0 ? 'Ask a question' : i === 1 ? 'Share an insight' : 'Tell a story'
+        const simplePrompt = `Write a short ${request.platform} post about: "${request.input}"
 
-        // Build a prompt that asks for JUST ONE variant
-        const singleVariantPrompt = `Write a ${request.platform} post from: "${request.input}"
+${hookStyle} to hook readers, add valuable content, and end with a call-to-action.
 
-CRITICAL: Total must be under ${charLimit} characters!
+IMPORTANT: Keep it under ${charLimit} characters total.
 
-Format:
-Hook: [5-8 words max]
-Body: [10-15 words max]
-CTA: [3-5 words max]
+Format your response exactly like this:
+Hook: [your hook here]
+Body: [your main content here]
+CTA: [your call-to-action here]`
 
-Style: ${i === 0 ? 'question' : i === 1 ? 'insight' : 'story'}-based hook
-NO labels, NO markdown, NO extra text`
+        console.log(`📝 Sending prompt to Ollama:\n${simplePrompt}`)
 
         const response = await fetch(`${ollamaUrl}/api/generate`, {
           method: 'POST',
@@ -201,12 +191,11 @@ NO labels, NO markdown, NO extra text`
           },
           body: JSON.stringify({
             model,
-            prompt: `${systemPrompt}\n\n${singleVariantPrompt}`,
+            prompt: simplePrompt,
             stream: false,
             options: {
-              temperature: 0.5 + (i * 0.1), // Moderate temperature
-              top_p: 0.9,
-              num_predict: 100 // Reasonable token limit for short tweets
+              temperature: 0.7,
+              num_predict: 150
             }
           })
         })
@@ -222,7 +211,15 @@ NO labels, NO markdown, NO extra text`
         console.log(`📄 Generated content (${content.length} chars):`, content.slice(0, 200) + '...')
 
         // Parse the generated content into components
-        const variant = this.parseGeneratedContent(content, `variant_${i + 1}`, request)
+        let variant = this.parseGeneratedContent(content, `variant_${i + 1}`, request)
+
+        // Auto-truncate if over limit
+        if (variant.content.length > charLimit) {
+          console.log(`⚠️ Variant ${i + 1} is ${variant.content.length} chars, truncating to ${charLimit}`)
+          variant.content = variant.content.substring(0, charLimit - 3) + '...'
+          variant.metadata.length = variant.content.length
+        }
+
         console.log(`📋 Parsed variant:`, JSON.stringify(variant, null, 2))
         variants.push(variant)
       }
