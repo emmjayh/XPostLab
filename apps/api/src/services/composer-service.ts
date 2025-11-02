@@ -204,10 +204,9 @@ NO labels, NO markdown, NO extra text`
             prompt: `${systemPrompt}\n\n${singleVariantPrompt}`,
             stream: false,
             options: {
-              temperature: 0.3 + (i * 0.1), // Lower temperature for more concise output
-              top_p: 0.85,
-              num_predict: 80, // Very strict token limit to force brevity
-              stop: ['\n\n', 'Variant', '**'] // Stop at double newline or variant markers
+              temperature: 0.5 + (i * 0.1), // Moderate temperature
+              top_p: 0.9,
+              num_predict: 100 // Reasonable token limit for short tweets
             }
           })
         })
