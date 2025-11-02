@@ -163,7 +163,7 @@ export class ComposerService {
 
       // Call Ollama API
       const ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
-      const model = 'llama3.1:8b' // Force use of faster model for development
+      const model = process.env.OLLAMA_MODEL || 'gpt-oss:20b'
       console.log('🌐 Calling Ollama:', { ollamaUrl, model })
       console.log('🔧 Environment check:', { 
         OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL,
