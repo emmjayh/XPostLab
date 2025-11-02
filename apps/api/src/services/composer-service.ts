@@ -213,11 +213,14 @@ CTA: [your call-to-action here]`
         // Parse the generated content into components
         let variant = this.parseGeneratedContent(content, `variant_${i + 1}`, request)
 
-        // Auto-truncate if over limit
+        // Auto-truncate if over limit - show full content for transparency
         if (variant.content.length > charLimit) {
-          console.log(`⚠️ Variant ${i + 1} is ${variant.content.length} chars, truncating to ${charLimit}`)
+          const overLimit = variant.content.length - charLimit
+          console.log(`⚠️ Variant ${i + 1} is ${overLimit} characters OVER the ${charLimit} limit (${variant.content.length} total)`)
+          console.log(`📝 Full untruncated content:\n${variant.content}`)
           variant.content = variant.content.substring(0, charLimit - 3) + '...'
           variant.metadata.length = variant.content.length
+          console.log(`✂️ Truncated to ${variant.metadata.length} chars`)
         }
 
         console.log(`📋 Parsed variant:`, JSON.stringify(variant, null, 2))
