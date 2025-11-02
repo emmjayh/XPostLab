@@ -31,7 +31,7 @@ interface GenerationResult {
 
 export function BrainDumpComposer() {
   const [input, setInput] = useState('')
-  const [selectedPersona, setSelectedPersona] = useState('demo-persona-1')
+  const [selectedPersona, setSelectedPersona] = useState('tech-thought-leader')
   const [selectedPlatform, setSelectedPlatform] = useState<'twitter' | 'linkedin' | 'instagram'>('twitter')
   const [variants, setVariants] = useState(3)
   const [includeHashtags, setIncludeHashtags] = useState(false)
