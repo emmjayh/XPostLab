@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { PersonaSelector } from './PersonaSelector'
@@ -128,24 +128,29 @@ export function BrainDumpComposer() {
   return (
     <div className="space-y-6">
       <div className="card">
-        <h2 className="text-xl font-semibold text-gray-900 mb-6">Brain Dump Composer</h2>
-        
+        <div className="mb-6 flex flex-col gap-2">
+          <h2 className="text-2xl font-semibold text-gray-900">X Post Lab Composer</h2>
+          <p className="text-sm text-gray-600">
+            Convert a single spark into persona-aligned variants ready for X, LinkedIn, Instagram, and beyond.
+          </p>
+        </div>
+
         <div className="space-y-6">
           {/* Input Section */}
           <div>
             <label htmlFor="brain-dump" className="block text-sm font-medium text-gray-700 mb-2">
-              Your ideas, thoughts, or notes
+              Drop your idea, outline, or half-finished hook
             </label>
             <textarea
               id="brain-dump"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Drop your thoughts here... 
+              placeholder={`Drop your thoughts here...
 
 Examples:
-• Just had an amazing insight about productivity and time management from my morning routine
-• The biggest mistake I see creators making with their content strategy
-• Why I think remote work is changing faster than people realize"
+- Thread outline on how we hit 100k followers in 90 days
+- Hook: The contrarian take that flipped our retention overnight
+- Behind-the-scenes notes from today's build sprint`}
               className="textarea h-32"
               rows={6}
             />
@@ -179,7 +184,7 @@ Examples:
                   }}
                   className="input"
                 >
-                  <option value="twitter">Twitter</option>
+                  <option value="twitter">X (Twitter)</option>
                   <option value="linkedin">LinkedIn</option>
                   <option value="instagram">Instagram</option>
                 </select>
@@ -214,7 +219,7 @@ Examples:
                   placeholder="280"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Default: Twitter (280), LinkedIn (3000), Instagram (2200)
+                  Default: X (280), LinkedIn (3000), Instagram (2200)
                 </p>
               </div>
 
@@ -224,7 +229,7 @@ Examples:
                   id="include-hashtags"
                   checked={includeHashtags}
                   onChange={(e) => setIncludeHashtags(e.target.checked)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                 />
                 <label htmlFor="include-hashtags" className="ml-2 block text-sm text-gray-700">
                   Include hashtags
@@ -275,3 +280,8 @@ Examples:
     </div>
   )
 }
+
+
+
+
+
