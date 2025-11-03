@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface Persona {
   id: string
@@ -17,39 +18,92 @@ interface PersonaSelectorProps {
   onPersonaChange: (personaId: string) => void
 }
 
+const fallbackPersonas: Persona[] = [
+  {
+    id: 'tech-thought-leader',
+    name: 'Tech Thought Leader',
+    description: 'Technical expert sharing data-driven insights and industry analysis',
+    isDefault: true,
+    tone: ['analytical', 'authoritative', 'insightful'],
+    cadence: 'detailed',
+    ctaStyle: 'direct',
+  },
+  {
+    id: 'motivational-speaker',
+    name: 'Motivational Speaker',
+    description: 'Inspirational voice that uplifts and energizes audiences',
+    isDefault: false,
+    tone: ['energetic', 'positive', 'encouraging'],
+    cadence: 'conversational',
+    ctaStyle: 'soft',
+  },
+  {
+    id: 'social-storyteller',
+    name: 'Social Storyteller',
+    description: 'Conversational tone that focuses on relatability and community engagement',
+    isDefault: false,
+    tone: ['warm', 'relatable', 'community-focused'],
+    cadence: 'conversational',
+    ctaStyle: 'question-based',
+  },
+]
+
 export function PersonaSelector({ selectedPersona, onPersonaChange }: PersonaSelectorProps) {
-  const [personas, setPersonas] = useState<Persona[]>([])
+  const { user, isLoading: isAuthLoading } = useAuth()
+  const [personas, setPersonas] = useState<Persona[]>(fallbackPersonas)
   const [isLoading, setIsLoading] = useState(true)
   const [selectedPersonaDetails, setSelectedPersonaDetails] = useState<Persona | null>(null)
 
   useEffect(() => {
-    fetchPersonas()
-  }, [])
+    if (isAuthLoading) return
+
+    const loadPersonas = async () => {
+      setIsLoading(true)
+
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const demoUserId = process.env.NEXT_PUBLIC_DEMO_USER_ID || 'dev-user'
+      const targetUserId = user?.id || demoUserId
+
+      try {
+        const url = new URL('/api/personas', apiBase)
+        url.searchParams.set('userId', targetUserId)
+
+        const response = await fetch(url.toString())
+        if (!response.ok) {
+          throw new Error(`Persona request failed with ${response.status}`)
+        }
+
+        const data: unknown = await response.json()
+        if (!Array.isArray(data)) {
+          throw new Error('Persona response was not an array')
+        }
+
+        setPersonas(data as Persona[])
+
+        if (!selectedPersona && data.length > 0) {
+          const defaultPersona = (data as Persona[]).find((p) => p.isDefault) || (data as Persona[])[0]
+          onPersonaChange(defaultPersona.id)
+        }
+      } catch (error) {
+        console.error('Failed to fetch personas, falling back to demo personas:', error)
+        setPersonas(fallbackPersonas)
+        if (!selectedPersona) {
+          onPersonaChange(fallbackPersonas[0].id)
+        }
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadPersonas()
+  }, [isAuthLoading, onPersonaChange, selectedPersona, user?.id])
 
   useEffect(() => {
     if (selectedPersona && personas.length > 0) {
-      const persona = personas.find(p => p.id === selectedPersona)
+      const persona = personas.find((p) => p.id === selectedPersona)
       setSelectedPersonaDetails(persona || null)
     }
   }, [selectedPersona, personas])
-
-  const fetchPersonas = async () => {
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/personas`)
-      const data = await response.json()
-      setPersonas(data)
-      
-      // Select default persona if none selected
-      if (!selectedPersona && data.length > 0) {
-        const defaultPersona = data.find((p: Persona) => p.isDefault) || data[0]
-        onPersonaChange(defaultPersona.id)
-      }
-    } catch (error) {
-      console.error('Failed to fetch personas:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   if (isLoading) {
     return (
@@ -63,9 +117,7 @@ export function PersonaSelector({ selectedPersona, onPersonaChange }: PersonaSel
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Persona (Voice)
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Persona (Voice)</label>
         <select
           value={selectedPersona}
           onChange={(e) => onPersonaChange(e.target.value)}
@@ -84,31 +136,25 @@ export function PersonaSelector({ selectedPersona, onPersonaChange }: PersonaSel
           <div className="space-y-2">
             <div>
               <span className="font-medium text-gray-700">Tone:</span>
-              <span className="ml-2 text-gray-600">
-                {selectedPersonaDetails.tone.join(', ')}
-              </span>
+              <span className="ml-2 text-gray-600">{selectedPersonaDetails.tone.join(', ')}</span>
             </div>
-            
+
             <div>
               <span className="font-medium text-gray-700">Cadence:</span>
-              <span className="ml-2 text-gray-600 capitalize">
-                {selectedPersonaDetails.cadence}
-              </span>
+              <span className="ml-2 text-gray-600 capitalize">{selectedPersonaDetails.cadence}</span>
             </div>
-            
+
             <div>
               <span className="font-medium text-gray-700">CTA Style:</span>
               <span className="ml-2 text-gray-600 capitalize">
                 {selectedPersonaDetails.ctaStyle.replace('-', ' ')}
               </span>
             </div>
-            
+
             {selectedPersonaDetails.description && (
               <div>
                 <span className="font-medium text-gray-700">Description:</span>
-                <span className="ml-2 text-gray-600">
-                  {selectedPersonaDetails.description}
-                </span>
+                <span className="ml-2 text-gray-600">{selectedPersonaDetails.description}</span>
               </div>
             )}
           </div>
