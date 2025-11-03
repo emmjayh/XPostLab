@@ -42,7 +42,7 @@ export function Navigation() {
 
   const primaryAction = user
     ? { label: 'Open Composer', href: '/composer' }
-    : { label: 'Sign In', href: '/login' }
+    : { label: 'Start Creating', href: '/#composer' }
 
   return (
     <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/80 backdrop-blur">
@@ -91,12 +91,11 @@ export function Navigation() {
                 Sign In
               </Link>
             )}
-            <Link
-              href={primaryAction.href}
-              className="hidden sm:inline-flex btn-primary text-sm"
-            >
-              {primaryAction.label}
-            </Link>
+            {primaryAction && (
+              <Link href={primaryAction.href} className="hidden sm:inline-flex btn-primary text-sm">
+                {primaryAction.label}
+              </Link>
+            )}
           </div>
 
           <button
@@ -156,13 +155,15 @@ export function Navigation() {
                 </Link>
               )}
 
-              <Link
-                href={primaryAction.href}
-                className="block rounded-lg px-3 py-2 text-sm font-medium text-white gradient-bg text-center shadow-md"
-                onClick={handleNavClick}
-              >
-                {primaryAction.label}
-              </Link>
+              {primaryAction && (
+                <Link
+                  href={primaryAction.href}
+                  className="block rounded-lg px-3 py-2 text-sm font-medium text-white gradient-bg text-center shadow-md"
+                  onClick={handleNavClick}
+                >
+                  {primaryAction.label}
+                </Link>
+              )}
             </div>
           </nav>
         </div>
