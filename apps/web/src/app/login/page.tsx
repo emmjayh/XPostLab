@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 
@@ -15,6 +15,16 @@ export default function LoginPage() {
 
   const { login, register } = useAuth()
   const router = useRouter()
+  const [redirectTarget, setRedirectTarget] = useState('/')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const redirect = params.get('redirect')
+    if (redirect && redirect.startsWith('/')) {
+      setRedirectTarget(redirect)
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -41,7 +51,8 @@ export default function LoginPage() {
 
         await register(email, password, username)
       }
-      router.push('/') // Redirect to home after successful login/register
+      const safeRedirect = redirectTarget.startsWith('/') ? redirectTarget : '/'
+      router.push(safeRedirect)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {

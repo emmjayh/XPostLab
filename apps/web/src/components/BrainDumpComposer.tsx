@@ -3,35 +3,11 @@
 import { useState } from 'react'
 import { PersonaSelector } from './PersonaSelector'
 import { ContentVariants } from './ContentVariants'
-
-interface ContentVariant {
-  id: string
-  content: string
-  hook?: string
-  body: string
-  cta?: string
-  hashtags: string[]
-  metadata: {
-    length: number
-    sentiment?: string
-    hookType?: string
-    wasTruncated?: boolean
-    originalLength?: number
-    overLimit?: number
-    originalContent?: string
-  }
-}
-
-interface GenerationResult {
-  success: boolean
-  jobId?: string
-  variants?: ContentVariant[]
-  error?: string
-}
+import { ContentVariant, GenerationResult } from '@/types/composer'
 
 export function BrainDumpComposer() {
   const [input, setInput] = useState('')
-  const [selectedPersona, setSelectedPersona] = useState('tech-thought-leader')
+  const [selectedPersona, setSelectedPersona] = useState('')
   const [selectedPlatform, setSelectedPlatform] = useState<'twitter' | 'linkedin' | 'instagram'>('twitter')
   const [variants, setVariants] = useState(3)
   const [includeHashtags, setIncludeHashtags] = useState(false)
@@ -40,7 +16,9 @@ export function BrainDumpComposer() {
   const [result, setResult] = useState<GenerationResult | null>(null)
 
   const handleGenerate = async () => {
-    if (!input.trim()) return
+    if (!input.trim() || !selectedPersona) {
+      return
+    }
 
     setIsGenerating(true)
     setResult(null)
@@ -250,7 +228,7 @@ Examples:
             
             <button
               onClick={handleGenerate}
-              disabled={!input.trim() || isGenerating}
+              disabled={!input.trim() || !selectedPersona || isGenerating}
               className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isGenerating ? (

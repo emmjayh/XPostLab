@@ -3,12 +3,24 @@
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
-const navItems = [
+interface NavItem {
+  label: string
+  href: string
+}
+
+const marketingNav: NavItem[] = [
   { label: 'Features', href: '/#features' },
   { label: 'How It Works', href: '/#how-it-works' },
   { label: 'Try It', href: '/#composer' },
+]
+
+const memberNav: NavItem[] = [
+  { label: 'Composer', href: '/composer' },
+  { label: 'Persona Engine', href: '/personas' },
+  { label: 'Insight Radar', href: '/insights' },
+  { label: 'Reply Studio', href: '/replies' },
 ]
 
 export function Navigation() {
@@ -26,8 +38,10 @@ export function Navigation() {
     setIsMenuOpen(false)
   }
 
+  const navItems = useMemo(() => (user ? memberNav : marketingNav), [user])
+
   const primaryAction = user
-    ? { label: 'Go to Composer', href: '/#composer' }
+    ? { label: 'Open Composer', href: '/composer' }
     : { label: 'Sign In', href: '/login' }
 
   return (

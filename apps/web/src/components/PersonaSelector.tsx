@@ -1,121 +1,32 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useAuth } from '@/contexts/AuthContext'
-
-interface Persona {
-  id: string
-  name: string
-  description?: string
-  isDefault: boolean
-  tone: string[]
-  cadence: string
-  ctaStyle: string
-}
+import { usePersonas } from '@/hooks/usePersonas'
+import { Persona } from '@/types/persona'
 
 interface PersonaSelectorProps {
   selectedPersona: string
   onPersonaChange: (personaId: string) => void
 }
 
-const fallbackPersonas: Persona[] = [
-  {
-    id: 'tech-thought-leader',
-    name: 'Tech Thought Leader',
-    description: 'Technical expert sharing data-driven insights and industry analysis',
-    isDefault: true,
-    tone: ['analytical', 'authoritative', 'insightful'],
-    cadence: 'detailed',
-    ctaStyle: 'direct',
-  },
-  {
-    id: 'motivational-speaker',
-    name: 'Motivational Speaker',
-    description: 'Inspirational voice that uplifts and energizes audiences',
-    isDefault: false,
-    tone: ['energetic', 'positive', 'encouraging'],
-    cadence: 'conversational',
-    ctaStyle: 'soft',
-  },
-  {
-    id: 'social-storyteller',
-    name: 'Social Storyteller',
-    description: 'Conversational tone that focuses on relatability and community engagement',
-    isDefault: false,
-    tone: ['warm', 'relatable', 'community-focused'],
-    cadence: 'conversational',
-    ctaStyle: 'question-based',
-  },
-]
-
 export function PersonaSelector({ selectedPersona, onPersonaChange }: PersonaSelectorProps) {
-  const { user, isLoading: isAuthLoading } = useAuth()
-  const [personas, setPersonas] = useState<Persona[]>(fallbackPersonas)
-  const [isLoading, setIsLoading] = useState(true)
+  const { personas, isLoading, defaultPersonaId } = usePersonas()
   const [selectedPersonaDetails, setSelectedPersonaDetails] = useState<Persona | null>(null)
 
   useEffect(() => {
-    if (isAuthLoading) return
-
-    const loadPersonas = async () => {
-      setIsLoading(true)
-
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      const demoUserId = process.env.NEXT_PUBLIC_DEMO_USER_ID || 'dev-user'
-      const targetUserId = user?.id || demoUserId
-
-      try {
-        const url = new URL('/api/personas', apiBase)
-        url.searchParams.set('userId', targetUserId)
-
-        const response = await fetch(url.toString())
-        if (!response.ok) {
-          throw new Error(`Persona request failed with ${response.status}`)
-        }
-
-        const data: unknown = await response.json()
-        if (!Array.isArray(data)) {
-          throw new Error('Persona response was not an array')
-        }
-
-        const personasFromApi = data as Persona[]
-        const hasPersonas = personasFromApi.length > 0
-
-        if (hasPersonas) {
-          setPersonas(personasFromApi)
-
-          if (!selectedPersona) {
-            const defaultPersona = personasFromApi.find((p) => p.isDefault) || personasFromApi[0]
-            onPersonaChange(defaultPersona.id)
-          }
-        } else {
-          setPersonas(fallbackPersonas)
-          if (!selectedPersona) {
-            onPersonaChange(fallbackPersonas[0].id)
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch personas, falling back to demo personas:', error)
-        setPersonas(fallbackPersonas)
-        if (!selectedPersona) {
-          onPersonaChange(fallbackPersonas[0].id)
-        }
-      } finally {
-        setIsLoading(false)
-      }
+    if (!selectedPersona && defaultPersonaId) {
+      onPersonaChange(defaultPersonaId)
     }
-
-    loadPersonas()
-  }, [isAuthLoading, onPersonaChange, selectedPersona, user?.id])
+  }, [defaultPersonaId, onPersonaChange, selectedPersona])
 
   useEffect(() => {
-    if (selectedPersona && personas.length > 0) {
+    if (selectedPersona) {
       const persona = personas.find((p) => p.id === selectedPersona)
       setSelectedPersonaDetails(persona || null)
     }
-  }, [selectedPersona, personas])
+  }, [personas, selectedPersona])
 
-  if (isLoading) {
+  if (isLoading && personas.length === 0) {
     return (
       <div className="animate-pulse">
         <div className="h-4 bg-gray-200 rounded mb-2"></div>
