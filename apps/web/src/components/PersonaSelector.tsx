@@ -78,11 +78,21 @@ export function PersonaSelector({ selectedPersona, onPersonaChange }: PersonaSel
           throw new Error('Persona response was not an array')
         }
 
-        setPersonas(data as Persona[])
+        const personasFromApi = data as Persona[]
+        const hasPersonas = personasFromApi.length > 0
 
-        if (!selectedPersona && data.length > 0) {
-          const defaultPersona = (data as Persona[]).find((p) => p.isDefault) || (data as Persona[])[0]
-          onPersonaChange(defaultPersona.id)
+        if (hasPersonas) {
+          setPersonas(personasFromApi)
+
+          if (!selectedPersona) {
+            const defaultPersona = personasFromApi.find((p) => p.isDefault) || personasFromApi[0]
+            onPersonaChange(defaultPersona.id)
+          }
+        } else {
+          setPersonas(fallbackPersonas)
+          if (!selectedPersona) {
+            onPersonaChange(fallbackPersonas[0].id)
+          }
         }
       } catch (error) {
         console.error('Failed to fetch personas, falling back to demo personas:', error)
