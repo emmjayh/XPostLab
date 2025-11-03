@@ -7,20 +7,29 @@ interface CSVRow {
   [key: string]: string
 }
 
+type PersonaCadence = 'concise' | 'detailed' | 'conversational'
+
+interface PersonaSuggestion {
+  id: string
+  name: string
+  description: string
+  tone: string[]
+  cadence: PersonaCadence
+  donts: string[]
+  hookPatterns: string[]
+  ctaStyle: 'direct' | 'soft' | 'question-based'
+  samplePosts: string[]
+  matchScore: number
+}
+
 interface StyleAnalysis {
   avgLength: number
   toneKeywords: string[]
   commonPhrases: string[]
   hookPatterns: string[]
   sentimentScore: number
-  cadence: 'concise' | 'detailed' | 'conversational'
-  suggestedPersona: {
-    name: string
-    tone: string[]
-    cadence: string
-    hookPatterns: string[]
-    ctaStyle: string
-  }
+  cadence: PersonaCadence
+  personaSuggestions: PersonaSuggestion[]
 }
 
 export class ContentUploadService {
@@ -75,15 +84,20 @@ export class ContentUploadService {
     const posts: Array<{ content: string; date?: Date; engagement?: number }> = []
 
     for (const row of rows) {
+      const lowerRow: Record<string, string> = {}
+      for (const [key, value] of Object.entries(row)) {
+        lowerRow[key.toLowerCase()] = value
+      }
+
       // Try common column names for content
       const content =
-        row.text ||
-        row.content ||
-        row.full_text ||
-        row.tweet ||
-        row.post ||
-        row.message ||
-        row.body
+        lowerRow.text ||
+        lowerRow.content ||
+        lowerRow.full_text ||
+        lowerRow.tweet ||
+        lowerRow.post ||
+        lowerRow.message ||
+        lowerRow.body
 
       if (!content || content.trim().length === 0) {
         continue
@@ -91,7 +105,12 @@ export class ContentUploadService {
 
       // Try to extract date
       let date: Date | undefined
-      const dateStr = row.date || row.created_at || row.timestamp || row.posted_at
+      const dateStr =
+        lowerRow['created at'] ||
+        lowerRow['created_at'] ||
+        lowerRow.date ||
+        lowerRow.timestamp ||
+        lowerRow.posted_at
       if (dateStr) {
         const parsed = new Date(dateStr)
         if (!isNaN(parsed.getTime())) {
@@ -101,9 +120,9 @@ export class ContentUploadService {
 
       // Try to calculate engagement score
       let engagement = 0
-      const likes = parseInt(row.likes || row.favorites || row.favorite_count || '0')
-      const retweets = parseInt(row.retweets || row.retweet_count || row.shares || '0')
-      const replies = parseInt(row.replies || row.reply_count || row.comments || '0')
+      const likes = parseInt(lowerRow['favorite count'] || lowerRow['likes'] || lowerRow['favorites'] || lowerRow['favorite_count'] || lowerRow['like count'] || '0')
+      const retweets = parseInt(lowerRow['retweet count'] || lowerRow['retweets'] || lowerRow['shares'] || '0')
+      const replies = parseInt(lowerRow['reply count'] || lowerRow['replies'] || lowerRow['comments'] || '0')
       engagement = likes + (retweets * 2) + (replies * 3) // Weight replies more
 
       posts.push({ content, date, engagement })
@@ -143,9 +162,8 @@ export class ContentUploadService {
     // Calculate sentiment score (simple positive/negative word counting)
     const sentimentScore = this.calculateSentiment(contents)
 
-    // Generate suggested persona based on analysis
-    const suggestedPersona = this.generatePersona(
-      avgLength,
+    const personaSuggestions = this.generatePersonaSuggestions(
+      posts,
       toneKeywords,
       hookPatterns,
       cadence,
@@ -159,7 +177,7 @@ export class ContentUploadService {
       hookPatterns,
       sentimentScore,
       cadence,
-      suggestedPersona
+      personaSuggestions
     }
   }
 
@@ -276,44 +294,171 @@ export class ContentUploadService {
     return score / maxScore
   }
 
-  /**
-   * Generate persona suggestion
-   */
-  private generatePersona(
-    avgLength: number,
+  private generatePersonaSuggestions(
+    posts: Array<{ content: string; engagement?: number }>,
     toneKeywords: string[],
     hookPatterns: string[],
-    cadence: string,
+    cadence: PersonaCadence,
     sentimentScore: number
-  ) {
-    // Determine persona name and CTA style based on tone
-    let name = 'Custom Voice'
-    let ctaStyle: 'direct' | 'soft' | 'question-based' = 'direct'
+  ): PersonaSuggestion[] {
+    const totalPosts = posts.length || 1
+    const lowerPosts = posts.map((post) => ({
+      ...post,
+      text: post.content.toLowerCase(),
+    }))
 
-    if (toneKeywords.includes('analytical')) {
-      name = 'Data-Driven Analyst'
-      ctaStyle = 'direct'
-    } else if (toneKeywords.includes('motivational')) {
-      name = 'Inspirational Coach'
-      ctaStyle = 'soft'
-    } else if (toneKeywords.includes('educational')) {
-      name = 'Knowledge Sharer'
-      ctaStyle = 'question-based'
-    } else if (toneKeywords.includes('humorous')) {
-      name = 'Witty Entertainer'
-      ctaStyle = 'question-based'
-    } else if (toneKeywords.includes('professional')) {
-      name = 'Business Expert'
-      ctaStyle = 'direct'
+    const blueprints = [
+      {
+        id: 'mental-health-ally',
+        name: 'Mental Health Ally',
+        description:
+          'Shows up with honesty and compassion to unpack heavy moments and normalize getting help.',
+        keywords: ['mental', 'hospital', 'disorder', 'therapy', 'diagnosed', 'struggle', 'please see'],
+        tone: ['empathetic', 'vulnerable', 'supportive'],
+        cadence: 'detailed' as PersonaCadence,
+        donts: ['dismiss lived experiences', 'offer medical advice', 'rush serious conversations'],
+        hookPatterns: ["I remember when...", "It’s okay to admit..."],
+        ctaStyle: 'soft' as const,
+      },
+      {
+        id: 'creative-promoter',
+        name: 'Creative Promoter',
+        description:
+          'Hype-first voice that celebrates new drops, collabs, and the behind-the-scenes creative grind.',
+        keywords: ['music', 'drop', 'spotify', 'youtube', 'stream', 'release', 'album', 'single'],
+        tone: ['energetic', 'optimistic', 'promotional'],
+        cadence: 'conversational' as PersonaCadence,
+        donts: ['sound desperate', 'overpromise outcomes', 'spam links without context'],
+        hookPatterns: ['The next track is...', 'When the beat drops...'],
+        ctaStyle: 'direct' as const,
+      },
+      {
+        id: 'community-collaborator',
+        name: 'Community Collaborator',
+        description:
+          'Builds momentum with peers, invites collabs, and keeps the conversation warm and personal.',
+        keywords: ['collab', 'together', 'community', 'join', 'dm', '@', 'looking to'],
+        tone: ['friendly', 'inviting', 'collaborative'],
+        cadence: 'conversational' as PersonaCadence,
+        donts: ['ignore replies', 'make one-sided requests', 'sound insincere'],
+        hookPatterns: ['Who else is building...', 'Let’s team up to...'],
+        ctaStyle: 'question-based' as const,
+      },
+      {
+        id: 'ai-and-tech-explorer',
+        name: 'AI & Tech Explorer',
+        description:
+          'Breaks down how AI and new tools are shifting the creative world with curiosity and clarity.',
+        keywords: ['ai', 'automation', 'machine learning', 'tool', 'tech', 'future', 'innovation'],
+        tone: ['curious', 'analytical', 'forward-looking'],
+        cadence: 'detailed' as PersonaCadence,
+        donts: ['use unexplained jargon', 'overhype features', 'ignore creator impact'],
+        hookPatterns: ['What if AI could...', 'The next shift in tech is...'],
+        ctaStyle: 'direct' as const,
+      },
+    ]
+
+    const bucketMap = new Map<
+      string,
+      {
+        blueprint: (typeof blueprints)[number]
+        count: number
+        samplePosts: string[]
+      }
+    >()
+
+    const addToBucket = (blueprint: (typeof blueprints)[number], post: string) => {
+      const existing = bucketMap.get(blueprint.id) || {
+        blueprint,
+        count: 0,
+        samplePosts: [] as string[],
+      }
+
+      existing.count += 1
+      if (existing.samplePosts.length < 3) {
+        existing.samplePosts.push(post.slice(0, 200).trim())
+      }
+
+      bucketMap.set(blueprint.id, existing)
     }
 
-    return {
-      name,
-      tone: toneKeywords.length > 0 ? toneKeywords : ['authentic', 'engaging'],
-      cadence,
-      hookPatterns,
-      ctaStyle
+    for (const post of lowerPosts) {
+      let matched = false
+
+      for (const blueprint of blueprints) {
+        if (blueprint.keywords.some((keyword) => post.text.includes(keyword))) {
+          addToBucket(blueprint, post.content)
+          matched = true
+        }
+      }
+
+      if (!matched && post.text.includes('?')) {
+        addToBucket(
+          {
+            id: 'curious-conversationalist',
+            name: 'Curious Conversationalist',
+            description: 'Keeps threads lively by asking sharp, open-ended questions that invite stories.',
+            keywords: [],
+            tone: ['inquisitive', 'approachable', 'thoughtful'],
+            cadence: 'conversational',
+            donts: ['make rhetorical questions that shut down dialogue', 'ignore follow-ups', 'overcomplicate language'],
+            hookPatterns: ['What if we tried...', 'Has anyone else noticed...'],
+            ctaStyle: 'question-based',
+          },
+          post.content
+        )
+      }
     }
+
+    const suggestions: PersonaSuggestion[] = Array.from(bucketMap.values())
+      .map(({ blueprint, count, samplePosts }) => ({
+        id: blueprint.id,
+        name: blueprint.name,
+        description: blueprint.description,
+        tone: blueprint.tone,
+        cadence: blueprint.cadence,
+        donts: blueprint.donts,
+        hookPatterns: hookPatterns.length ? hookPatterns.slice(0, 3) : blueprint.hookPatterns,
+        ctaStyle: blueprint.ctaStyle,
+        samplePosts,
+        matchScore: Number((count / totalPosts).toFixed(2)),
+      }))
+      .sort((a, b) => b.matchScore - a.matchScore)
+
+    if (!suggestions.length) {
+      suggestions.push({
+        id: 'creator-generalist',
+        name: 'Creator Generalist',
+        description: 'Balanced voice that mixes personal updates with steady community touchpoints.',
+        tone: toneKeywords.length ? toneKeywords : ['authentic', 'approachable', 'growth-minded'],
+        cadence: cadence,
+        donts: ['sound robotic', 'over-orchestrate copy', 'lean on filler phrases'],
+        hookPatterns: hookPatterns.slice(0, 3),
+        ctaStyle: sentimentScore >= 0 ? 'question-based' : 'soft',
+        samplePosts: lowerPosts.slice(0, 3).map((p) => p.content.slice(0, 200).trim()),
+        matchScore: 1,
+      })
+    }
+
+    if (suggestions.length < 3) {
+      suggestions.push({
+        id: 'momentum-journal',
+        name: 'Momentum Journal',
+        description: 'Captures daily momentum, lessons, and unfiltered reflections from the creative grind.',
+        tone: ['reflective', 'honest', 'motivational'],
+        cadence: cadence,
+        donts: ['overlook the struggle', 'sell toxic positivity', 'forget the audience'],
+        hookPatterns: hookPatterns.slice(0, 3),
+        ctaStyle: sentimentScore >= 0 ? 'soft' : 'question-based',
+        samplePosts: lowerPosts
+          .filter((post) => post.text.includes('today') || post.text.includes('remember'))
+          .slice(0, 3)
+          .map((p) => p.content.slice(0, 200).trim()),
+        matchScore: 0.4,
+      })
+    }
+
+    return suggestions.slice(0, 4)
   }
 
   /**
@@ -437,10 +582,15 @@ export class ContentUploadService {
   /**
    * Create persona from analysis
    */
-  async createPersonaFromAnalysis(userId: string, uploadId: string, customizations?: {
-    name?: string
-    description?: string
-  }) {
+  async createPersonaFromAnalysis(
+    userId: string,
+    uploadId: string,
+    customizations?: {
+      name?: string
+      description?: string
+      suggestionId?: string
+    }
+  ) {
     const upload = await prisma.contentUpload.findFirst({
       where: {
         id: uploadId,
@@ -453,20 +603,41 @@ export class ContentUploadService {
     }
 
     const analysis: StyleAnalysis = JSON.parse(upload.analysis)
-    const suggested = analysis.suggestedPersona
+    const suggestions = analysis.personaSuggestions || []
 
-    // Create persona
+    const chosenSuggestion =
+      suggestions.find((suggestion) => suggestion.id === customizations?.suggestionId) ||
+      suggestions[0]
+
+    const personaSource = chosenSuggestion || {
+      id: 'creator-generalist',
+      name: customizations?.name || 'Creator Generalist',
+      description:
+        customizations?.description ||
+        `Persona generated from ${upload.totalPosts} posts uploaded on ${upload.createdAt.toISOString()}`,
+      tone: ['authentic', 'engaging'],
+      cadence: 'conversational' as PersonaCadence,
+      donts: [],
+      hookPatterns: ['Let me share...', 'Here is what I learned...'],
+      ctaStyle: 'question-based' as const,
+      samplePosts: [],
+      matchScore: 0.5,
+    }
+
     const persona = await prisma.persona.create({
       data: {
         userId,
-        name: customizations?.name || suggested.name,
-        description: customizations?.description || `AI-generated persona based on ${upload.totalPosts} posts`,
+        name: customizations?.name || personaSource.name,
+        description:
+          customizations?.description ||
+          personaSource.description ||
+          `AI-generated persona based on ${upload.totalPosts} posts`,
         isDefault: false,
-        tone: JSON.stringify(suggested.tone),
-        cadence: suggested.cadence,
-        donts: JSON.stringify([]),
-        hookPatterns: JSON.stringify(suggested.hookPatterns),
-        ctaStyle: suggested.ctaStyle,
+        tone: JSON.stringify(personaSource.tone),
+        cadence: personaSource.cadence,
+        donts: JSON.stringify(personaSource.donts ?? []),
+        hookPatterns: JSON.stringify(personaSource.hookPatterns ?? []),
+        ctaStyle: personaSource.ctaStyle,
         platforms: JSON.stringify({})
       }
     })

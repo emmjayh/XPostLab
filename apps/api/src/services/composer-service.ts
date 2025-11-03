@@ -1,4 +1,4 @@
-// import { prisma } from '../lib' // Temporarily disabled for quick setup
+import { prisma } from '../lib/database'
 import { PersonaEngine, ContentRequest, ContentVariant, GenerationResult } from '../lib'
 import { JobService } from './job-service'
 
@@ -6,11 +6,32 @@ export interface ComposerRequest {
   input: string
   personaId: string
   platform: 'twitter' | 'linkedin' | 'instagram'
+  userId?: string
   options?: {
     variants?: number
     maxLength?: number // Custom character limit (defaults based on platform)
     includeHashtags?: boolean
   }
+}
+
+function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
+  if (!value) return fallback
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return fallback
+  }
+}
+
+interface PersonaEngineConfig {
+  id: string
+  name: string
+  tone: string[]
+  cadence: string
+  donts: string[]
+  hookPatterns: string[]
+  ctaStyle: string
+  platforms: Record<string, unknown>
 }
 
 export class ComposerService {
@@ -27,80 +48,72 @@ export class ComposerService {
     error?: string
   }> {
     try {
-      console.log('🎯 generateFromBrainDump called with:', JSON.stringify(request, null, 2))
-
-      // Accept any persona ID for now since we're using mock data
-      // In production, this would validate against the database
       if (!request.personaId || request.personaId.trim() === '') {
-        console.error('❌ Persona ID is required')
         throw new Error('Persona ID is required')
       }
 
-      console.log('✅ Persona ID received:', request.personaId)
+      const { config: personaConfig, persistedId } = await this.resolvePersonaConfig(request.personaId, request.userId)
 
-      // Process everything synchronously for now (no job queue implemented yet)
-      // In production, we'll queue jobs for large batches (>5 variants or very long input)
-      const shouldGenerateSync = (request.options?.variants || 3) <= 5 && request.input.length < 2000
-      console.log('🤔 Should generate sync?', shouldGenerateSync, {
-        variants: request.options?.variants || 3,
-        inputLength: request.input.length
-      })
+      const requestedVariants = request.options?.variants ?? 3
+      const shouldGenerateSync =
+        !request.userId || (requestedVariants <= 5 && request.input.length < 2000)
 
       if (shouldGenerateSync) {
-        console.log('⚡ Generating synchronously...')
-        const result = await this.generateSync(request)
-        console.log('✨ Sync generation complete:', result.success)
+        const result = await this.generateSync(request, personaConfig)
+
+        let recordedJobId: string | null = null
+        if (request.userId && result.success && result.variants?.length) {
+          recordedJobId = await this.persistGeneratedContent(request, persistedId, result)
+        }
+
         return {
           success: result.success,
-          jobId: 'sync', // No actual job for sync requests
+          jobId: request.userId ? recordedJobId ?? 'sync' : 'demo-sync',
           variants: result.variants,
-          error: result.error
+          error: result.error,
         }
       }
 
-      // For complex requests, queue a job
-      console.log('📋 Creating job for async processing...')
+      if (!request.userId) {
+        const result = await this.generateSync(request, personaConfig)
+        return {
+          success: result.success,
+          jobId: 'demo-sync',
+          variants: result.variants,
+          error: result.error,
+        }
+      }
+
       const job = await this.jobService.createComposerJob({
+        userId: request.userId,
         type: 'BRAIN_DUMP',
-        personaId: request.personaId,
-        input: request
+        personaId: personaConfig.id,
+        input: request,
       })
 
-      console.log('✅ Job created:', job.id)
       return {
         success: true,
-        jobId: job.id
+        jobId: job?.id ?? 'queued',
       }
 
     } catch (error) {
-      console.error('💥 Error in generateFromBrainDump:', error)
-      console.error('💥 Error stack:', error instanceof Error ? error.stack : 'No stack')
-      console.error('💥 Error type:', typeof error)
       throw error
     }
   }
 
-  async generateSync(request: ComposerRequest): Promise<GenerationResult> {
+  async generateSync(request: ComposerRequest, personaConfig: PersonaEngineConfig): Promise<GenerationResult> {
     try {
-      console.log('🔍 Starting generateSync with request:', request)
-      
-      // Use mock persona for now
-      const mockPersona = {
-        id: request.personaId,
-        name: 'Mock Persona',
-        tone: ['professional', 'insightful'],
-        cadence: 'detailed',
-        donts: ['use slang'],
-        hookPatterns: ['Data-driven insights'],
-        ctaStyle: 'direct',
-        platforms: {}
-      }
-
-      console.log('🤖 Using mock persona:', mockPersona)
-
-      // Create persona engine
-      const personaEngine = PersonaEngine.fromDatabasePersona(mockPersona)
-      console.log('⚙️ PersonaEngine created successfully')
+      const personaEngine = PersonaEngine.fromDatabasePersona({
+        id: personaConfig.id,
+        name: personaConfig.name,
+        description: undefined,
+        tone: personaConfig.tone,
+        cadence: personaConfig.cadence,
+        donts: personaConfig.donts,
+        hookPatterns: personaConfig.hookPatterns,
+        ctaStyle: personaConfig.ctaStyle,
+        platforms: personaConfig.platforms,
+      })
 
       // Determine max length based on platform or user override
       const platformDefaults = {
@@ -414,8 +427,8 @@ CTA: [your call-to-action here]`
     return 'general'
   }
 
-  async getJobStatus(jobId: string) {
-    if (jobId === 'sync') {
+  async getJobStatus(jobId: string, userId?: string) {
+    if (jobId === 'sync' || jobId === 'demo-sync') {
       return {
         id: 'sync',
         status: 'COMPLETED',
@@ -425,6 +438,98 @@ CTA: [your call-to-action here]`
       }
     }
 
-    return await this.jobService.getJob(jobId)
+    return await this.jobService.getJob(jobId, userId)
+  }
+
+  private async resolvePersonaConfig(
+    personaId: string,
+    userId?: string
+  ): Promise<{ config: PersonaEngineConfig; persistedId: string | null }> {
+    const persona = await prisma.persona.findFirst({
+      where: {
+        id: personaId,
+        ...(userId ? { userId } : {}),
+      },
+    })
+
+    if (!persona) {
+      return {
+        config: {
+          id: personaId,
+          name: 'Custom Persona',
+          tone: ['neutral', 'helpful'],
+          cadence: 'conversational',
+          donts: [],
+          hookPatterns: ["Here's the signal I'm watching"],
+          ctaStyle: 'direct',
+          platforms: {},
+        },
+        persistedId: null,
+      }
+    }
+
+    return {
+      config: {
+        id: persona.id,
+        name: persona.name,
+        tone: safeJsonParse<string[]>(persona.tone, []),
+        cadence: persona.cadence,
+        donts: safeJsonParse<string[]>(persona.donts, []),
+        hookPatterns: safeJsonParse<string[]>(persona.hookPatterns, []),
+        ctaStyle: persona.ctaStyle,
+        platforms: safeJsonParse<Record<string, unknown>>(persona.platforms, {}),
+      },
+      persistedId: persona.id,
+    }
+  }
+
+  private async persistGeneratedContent(
+    request: ComposerRequest,
+    personaId: string | null,
+    result: GenerationResult
+  ) {
+    if (!request.userId || !result.variants?.length) {
+      return
+    }
+
+    const job = await this.jobService.logJobResult({
+      userId: request.userId,
+      personaId,
+      type: 'BRAIN_DUMP',
+      status: 'COMPLETED',
+      input: {
+        personaId: request.personaId,
+        platform: request.platform,
+        options: request.options,
+        input: request.input,
+      },
+      output: {
+        variants: result.variants,
+      },
+    })
+
+    await prisma.$transaction(
+      result.variants.map((variant) =>
+        prisma.post.create({
+          data: {
+            userId: request.userId!,
+            personaId: personaId ?? undefined,
+            platform: request.platform,
+            content: variant.content,
+            published: false,
+            platformData: JSON.stringify({
+              hook: variant.hook,
+              body: variant.body,
+              cta: variant.cta,
+              hashtags: variant.hashtags,
+              metadata: variant.metadata,
+              sourceJobId: job?.id,
+            }),
+          },
+        })
+      )
+    )
+
+    return job?.id ?? null
   }
 }

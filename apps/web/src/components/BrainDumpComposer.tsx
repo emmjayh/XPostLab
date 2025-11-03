@@ -1,6 +1,7 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
 import { PersonaSelector } from './PersonaSelector'
 import { ContentVariants } from './ContentVariants'
 import { ContentVariant, GenerationResult } from '@/types/composer'
@@ -14,6 +15,7 @@ export function BrainDumpComposer() {
   const [characterLimit, setCharacterLimit] = useState(280)
   const [isGenerating, setIsGenerating] = useState(false)
   const [result, setResult] = useState<GenerationResult | null>(null)
+  const { token } = useAuth()
 
   const handleGenerate = async () => {
     if (!input.trim() || !selectedPersona) {
@@ -24,11 +26,17 @@ export function BrainDumpComposer() {
     setResult(null)
 
     try {
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      }
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/composer/brain-dump`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           input,
           personaId: selectedPersona,
@@ -36,19 +44,22 @@ export function BrainDumpComposer() {
           options: {
             variants,
             includeHashtags,
-            maxLength: characterLimit
-          }
-        })
+            maxLength: characterLimit,
+          },
+        }),
       })
 
       const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to generate content')
+      }
       setResult(data)
 
     } catch (error) {
       console.error('Generation failed:', error)
       setResult({
         success: false,
-        error: 'Failed to generate content. Please try again.'
+        error: error instanceof Error ? error.message : 'Failed to generate content. Please try again.'
       })
     } finally {
       setIsGenerating(false)
@@ -64,11 +75,17 @@ export function BrainDumpComposer() {
     setIsGenerating(true)
 
     try {
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      }
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/composer/brain-dump`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           input: `Make this content SHORTER to fit under ${charLimit} characters:\n\n${originalContent}`,
           personaId: selectedPersona,
@@ -76,12 +93,15 @@ export function BrainDumpComposer() {
           options: {
             variants: 1,
             includeHashtags,
-            maxLength: charLimit - 20 // Give it extra room
-          }
-        })
+            maxLength: charLimit - 20, // Give it extra room
+          },
+        }),
       })
 
       const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to rework variant')
+      }
 
       // Replace only the specific variant that was reworked
       if (data.success && data.variants && data.variants.length > 0 && result) {

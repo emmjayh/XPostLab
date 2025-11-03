@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { prisma } from '../lib/database'
+import { seedDefaultPersonas } from '../lib/seed-default-personas'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production'
 const JWT_EXPIRES_IN = '7d'
@@ -42,6 +43,9 @@ export class AuthService {
         createdAt: true
       }
     })
+
+    // Seed default personas for the new user
+    await seedDefaultPersonas(user.id)
 
     // Generate JWT token
     const token = this.generateToken({

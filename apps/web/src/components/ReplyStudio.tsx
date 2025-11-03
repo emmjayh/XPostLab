@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
 import { ContentVariants } from './ContentVariants'
 import { usePersonas } from '@/hooks/usePersonas'
 import { ContentVariant, GenerationResult } from '@/types/composer'
@@ -24,6 +25,7 @@ export function ReplyStudio() {
   const [includeHashtags, setIncludeHashtags] = useState(false)
   const [result, setResult] = useState<ReplyStudioResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const { token } = useAuth()
 
   useEffect(() => {
     if (!selectedPersonaId && defaultPersonaId) {
@@ -77,11 +79,17 @@ export function ReplyStudio() {
         .filter(Boolean)
         .join('\n')
 
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      }
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
+
       const response = await fetch(`${API_BASE}/api/composer/compose`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           input: prompt,
           personaId: selectedPersonaId,
@@ -201,7 +209,7 @@ Your reply should add value, extend the conversation, or open a loop.`}
               <div className="flex flex-col">
                 <span className="font-medium text-gray-700">Character target</span>
                 <span>
-                  Up to <strong>{characterLimit}</strong> characters · Platform focus: X/Twitter style replies
+                  Up to <strong>{characterLimit}</strong> characters | Platform focus: X/Twitter style replies
                 </span>
               </div>
               <label className="flex items-center gap-2">
@@ -259,7 +267,7 @@ Your reply should add value, extend the conversation, or open a loop.`}
                   ))}
                 </div>
                 <div className="rounded-lg border border-dashed border-indigo-200 bg-indigo-50/60 px-4 py-3 text-xs text-indigo-700">
-                  CTA style: <strong className="capitalize">{selectedPersona.ctaStyle.replace('-', ' ')}</strong> · Cadence:{' '}
+                  CTA style: <strong className="capitalize">{selectedPersona.ctaStyle.replace('-', ' ')}</strong> | Cadence:{' '}
                   <strong className="capitalize">{selectedPersona.cadence}</strong>
                 </div>
               </div>
@@ -271,9 +279,9 @@ Your reply should add value, extend the conversation, or open a loop.`}
           <div className="card space-y-3">
             <h3 className="text-lg font-semibold text-gray-900">Reply playbook</h3>
             <ul className="space-y-2 text-sm text-gray-600">
-              <li>• Start by acknowledging the original post before adding your perspective.</li>
-              <li>• Make one strong point per reply to keep things scannable.</li>
-              <li>• Close with a loop, question, or soft CTA to encourage further engagement.</li>
+              <li>- Start by acknowledging the original post before adding your perspective.</li>
+              <li>- Make one strong point per reply to keep things scannable.</li>
+              <li>- Close with a loop, question, or soft CTA to encourage further engagement.</li>
             </ul>
           </div>
         </div>

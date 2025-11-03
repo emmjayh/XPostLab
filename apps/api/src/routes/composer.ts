@@ -1,12 +1,13 @@
 import { FastifyPluginAsync } from 'fastify'
-import { z } from 'zod'
 import { ComposerService } from '../services/composer-service'
+import { authenticate, optionalAuthenticate } from '../middleware/auth'
 
 const composerRoutes: FastifyPluginAsync = async (fastify) => {
   const composerService = new ComposerService()
 
   // Brain dump to posts endpoint
   fastify.post('/api/composer/brain-dump', {
+    preHandler: optionalAuthenticate,
     schema: {
       description: 'Transform brain dump or raw ideas into polished social media posts',
       tags: ['Composer'],
@@ -102,7 +103,10 @@ const composerRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     try {
-      const result = await composerService.generateFromBrainDump(body)
+      const result = await composerService.generateFromBrainDump({
+        ...body,
+        userId: request.user?.id,
+      })
       return result
     } catch (error) {
       fastify.log.error({ error }, 'Brain dump generation failed')
@@ -116,6 +120,7 @@ const composerRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Get job status endpoint
   fastify.get('/api/composer/job/:jobId', {
+    preHandler: authenticate,
     schema: {
       description: 'Get the status and result of a composition job',
       tags: ['Composer'],
@@ -156,7 +161,7 @@ const composerRoutes: FastifyPluginAsync = async (fastify) => {
     const { jobId } = request.params as { jobId: string }
 
     try {
-      const job = await composerService.getJobStatus(jobId)
+      const job = await composerService.getJobStatus(jobId, request.user?.id)
       
       if (!job) {
         reply.code(404)
@@ -175,6 +180,7 @@ const composerRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Direct compose endpoint (synchronous, for simple cases)
   fastify.post('/api/composer/compose', {
+    preHandler: optionalAuthenticate,
     schema: {
       description: 'Generate posts synchronously (for simple, fast requests)',
       tags: ['Composer'],
@@ -204,7 +210,10 @@ const composerRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     try {
-      const result = await composerService.generateSync(body)
+      const result = await composerService.generateFromBrainDump({
+        ...body,
+        userId: request.user?.id,
+      })
       return result
     } catch (error) {
       fastify.log.error({ error }, 'Sync composition failed')

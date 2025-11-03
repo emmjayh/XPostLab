@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
+import { useAuth } from '@/contexts/AuthContext'
 import { usePersonas } from '@/hooks/usePersonas'
 import { Persona, PersonaCadence, PersonaCTAStyle } from '@/types/persona'
 
@@ -32,7 +33,8 @@ const initialFormState: PersonaFormState = {
 
 export default function PersonasPage() {
   const { user, isLoading: authLoading } = useRequireAuth()
-  const { personas, isLoading, error, setPersonas, defaultPersonaId, userId } = usePersonas()
+  const { token } = useAuth()
+  const { personas, isLoading: personasLoading, error, setPersonas, defaultPersonaId, userId } = usePersonas()
 
   const [activePersonaId, setActivePersonaId] = useState<string | null>(null)
   const [formState, setFormState] = useState<PersonaFormState>(initialFormState)
@@ -86,9 +88,17 @@ export default function PersonasPage() {
         return
       }
 
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      }
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
+
       const response = await fetch(`${API_BASE}/api/personas`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
       })
 
@@ -154,7 +164,7 @@ export default function PersonasPage() {
           <div className="card space-y-3">
             <h2 className="text-lg font-semibold text-gray-900">Tip</h2>
             <p className="text-sm text-gray-600">
-              Keep persona tone lists to 3-5 descriptors. Align cadence with the platform you post on the most, and capture “don’ts”
+            Keep persona tone lists to 3-5 descriptors. Align cadence with the platform you post on the most, and capture "don'ts" so the model knows what to avoid.
               so the model knows what to avoid.
             </p>
           </div>
@@ -170,7 +180,7 @@ export default function PersonasPage() {
             )}
           </div>
 
-          {isLoading ? (
+          {personasLoading ? (
             <div className="space-y-3">
               {[...Array(3)].map((_, index) => (
                 <div key={index} className="h-20 animate-pulse rounded-xl bg-gray-100" />
@@ -407,3 +417,5 @@ export default function PersonasPage() {
     </div>
   )
 }
+
+

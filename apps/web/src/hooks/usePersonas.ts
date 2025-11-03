@@ -38,7 +38,9 @@ export function usePersonas(options: UsePersonasOptions = {}) {
       setError(null)
 
       const url = new URL('/api/personas', API_BASE)
-      url.searchParams.set('userId', userId)
+      if (!token || userId === DEMO_USER_ID) {
+        url.searchParams.set('userId', userId)
+      }
 
       const response = await fetch(url.toString(), {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,

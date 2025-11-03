@@ -202,9 +202,10 @@ const uploadRoutes: FastifyPluginAsync = async (fastify) => {
     }
   }, async (request, reply) => {
     const { uploadId } = request.params as { uploadId: string }
-    const { name, description } = request.body as {
+    const { name, description, suggestionId } = request.body as {
       name?: string
       description?: string
+      suggestionId?: string
     }
 
     try {
@@ -216,7 +217,7 @@ const uploadRoutes: FastifyPluginAsync = async (fastify) => {
       const persona = await uploadService.createPersonaFromAnalysis(
         request.user.id,
         uploadId,
-        { name, description }
+        { name, description, suggestionId }
       )
 
       return { success: true, persona }

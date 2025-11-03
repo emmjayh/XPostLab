@@ -1,56 +1,116 @@
-// import { prisma } from '../lib' // Temporarily disabled for quick setup
+import { prisma, Job } from '../lib/database'
 
 export interface CreateJobRequest {
+  userId: string
   type: string
-  personaId: string
+  personaId?: string | null
   input: any
   priority?: number
 }
 
-export class JobService {
-  async createComposerJob(request: CreateJobRequest) {
-    // In a real implementation, this would create a database job
-    // For now, we'll return a mock job
-    return {
-      id: `job_${Date.now()}`,
-      type: request.type,
-      status: 'QUEUED',
-      personaId: request.personaId,
-      input: request.input,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }
+export interface LogJobRequest {
+  userId: string
+  type: string
+  personaId?: string | null
+  status?: 'COMPLETED' | 'FAILED'
+  input: any
+  output?: any
+  error?: string
+}
+
+function serializeJob(job: Job | null) {
+  if (!job) {
+    return null
   }
 
-  async getJob(jobId: string) {
-    // Mock job retrieval
-    return {
-      id: jobId,
-      status: 'COMPLETED',
-      result: {
-        variants: [],
-        metadata: {
-          processingTime: 1500
-        }
+  return {
+    ...job,
+    input: safeParse(job.input),
+    output: safeParse(job.output),
+  }
+}
+
+function safeParse(value?: string | null) {
+  if (!value) return null
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
+
+export class JobService {
+  async createComposerJob(request: CreateJobRequest) {
+    const job = await prisma.job.create({
+      data: {
+        userId: request.userId,
+        personaId: request.personaId ?? null,
+        type: request.type,
+        status: 'QUEUED',
+        priority: request.priority ?? 0,
+        input: JSON.stringify(request.input),
+        attempts: 0,
       },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
+    })
+
+    return serializeJob(job)
+  }
+
+  async logJobResult(request: LogJobRequest) {
+    const job = await prisma.job.create({
+      data: {
+        userId: request.userId,
+        personaId: request.personaId ?? null,
+        type: request.type,
+        status: request.status ?? 'COMPLETED',
+        input: JSON.stringify(request.input),
+        output: request.output ? JSON.stringify(request.output) : null,
+        error: request.error ?? null,
+        attempts: 1,
+        maxRetries: 0,
+      },
+    })
+
+    return serializeJob(job)
+  }
+
+  async getJob(jobId: string, userId?: string) {
+    const job = await prisma.job.findFirst({
+      where: {
+        id: jobId,
+        ...(userId ? { userId } : {}),
+      },
+    })
+
+    return serializeJob(job)
   }
 
   async getJobsByUser(userId: string, status?: string) {
-    // Would query the database for user's jobs
-    return []
+    const jobs = await prisma.job.findMany({
+      where: {
+        userId,
+        ...(status ? { status } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    })
+
+    return jobs
+      .map((job) => serializeJob(job))
+      .filter((entry): entry is ReturnType<typeof serializeJob> => Boolean(entry))
   }
 
   async updateJobStatus(jobId: string, status: string, result?: any, error?: string) {
-    // Would update job in database
-    return {
-      id: jobId,
-      status,
-      result,
-      error,
-      updatedAt: new Date()
-    }
+    const job = await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status,
+        output: result ? JSON.stringify(result) : undefined,
+        error: error || null,
+        attempts: { increment: 1 },
+      },
+    })
+
+    return serializeJob(job)
   }
 }

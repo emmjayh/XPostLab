@@ -1,60 +1,44 @@
 import { FastifyPluginAsync } from 'fastify'
 import { JobService } from '../services/job-service'
+import { authenticate } from '../middleware/auth'
 
 const jobsRoutes: FastifyPluginAsync = async (fastify) => {
   const jobService = new JobService()
 
   // Get jobs for user
   fastify.get('/api/jobs', {
+    preHandler: authenticate,
     schema: {
       description: 'Get jobs for the authenticated user',
       tags: ['Jobs'],
       querystring: {
         type: 'object',
         properties: {
-          userId: { type: 'string' },
-          status: { 
+          status: {
             type: 'string',
-            enum: ['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED']
+            enum: ['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'],
           },
           limit: { type: 'number', default: 20 },
-          offset: { type: 'number', default: 0 }
-        }
-      }
-    }
+          offset: { type: 'number', default: 0 },
+        },
+      },
+    },
   }, async (request, reply) => {
-    const { userId, status, limit = 20, offset = 0 } = request.query as {
-      userId?: string
-      status?: any
+    if (!request.user) {
+      reply.code(401)
+      return { error: 'Not authenticated' }
+    }
+
+    const { status, limit = 20, offset = 0 } = request.query as {
+      status?: string
       limit?: number
       offset?: number
     }
 
     try {
-      if (!userId) {
-        // Return demo jobs for testing
-        return [
-          {
-            id: 'demo-job-1',
-            type: 'BRAIN_DUMP',
-            status: 'COMPLETED',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            result: {
-              variants: [
-                {
-                  id: 'variant_1',
-                  content: 'Demo content variant 1',
-                  metadata: { length: 25 }
-                }
-              ]
-            }
-          }
-        ]
-      }
-
-      const jobs = await jobService.getJobsByUser(userId, status)
-      return jobs
+      const jobs = (await jobService.getJobsByUser(request.user.id, status)) ?? []
+      const paginated = jobs.slice(offset, offset + limit)
+      return paginated
     } catch (error) {
       fastify.log.error({ error }, 'Failed to fetch jobs')
       reply.code(500)
@@ -64,6 +48,7 @@ const jobsRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Get specific job
   fastify.get('/api/jobs/:jobId', {
+    preHandler: authenticate,
     schema: {
       description: 'Get a specific job by ID',
       tags: ['Jobs'],
@@ -71,16 +56,21 @@ const jobsRoutes: FastifyPluginAsync = async (fastify) => {
         type: 'object',
         required: ['jobId'],
         properties: {
-          jobId: { type: 'string' }
-        }
-      }
-    }
+          jobId: { type: 'string' },
+        },
+      },
+    },
   }, async (request, reply) => {
+    if (!request.user) {
+      reply.code(401)
+      return { error: 'Not authenticated' }
+    }
+
     const { jobId } = request.params as { jobId: string }
 
     try {
-      const job = await jobService.getJob(jobId)
-      
+      const job = await jobService.getJob(jobId, request.user.id)
+
       if (!job) {
         reply.code(404)
         return { error: 'Job not found' }
@@ -102,10 +92,10 @@ const jobsRoutes: FastifyPluginAsync = async (fastify) => {
       headers: {
         type: 'object',
         properties: {
-          authorization: { type: 'string' }
-        }
-      }
-    }
+          authorization: { type: 'string' },
+        },
+      },
+    },
   }, async (request, reply) => {
     // Simple auth check (in production, use proper JWT validation)
     const authHeader = request.headers.authorization
@@ -133,8 +123,8 @@ const jobsRoutes: FastifyPluginAsync = async (fastify) => {
       headers: {
         type: 'object',
         properties: {
-          authorization: { type: 'string' }
-        }
+          authorization: { type: 'string' },
+        },
       },
       body: {
         type: 'object',
@@ -149,12 +139,12 @@ const jobsRoutes: FastifyPluginAsync = async (fastify) => {
             properties: {
               model: { type: 'string' },
               processingTime: { type: 'number' },
-              tokenCount: { type: 'number' }
-            }
-          }
-        }
-      }
-    }
+              tokenCount: { type: 'number' },
+            },
+          },
+        },
+      },
+    },
   }, async (request, reply) => {
     // Simple auth check
     const authHeader = request.headers.authorization
