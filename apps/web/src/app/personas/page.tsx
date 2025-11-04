@@ -4,12 +4,38 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePersonas } from '@/hooks/usePersonas'
-import { Persona, PersonaCadence, PersonaCTAStyle } from '@/types/persona'
+import { useUploads } from '@/hooks/useUploads'
+import { Persona, PersonaCadence, PersonaCTAStyle, PersonaPlatformConfig } from '@/types/persona'
+import { PersonaSuggestion } from '@/types/uploads'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 const cadenceOptions: PersonaCadence[] = ['concise', 'detailed', 'conversational']
 const ctaOptions: PersonaCTAStyle[] = ['direct', 'soft', 'question-based']
+
+const uploadStatusStyles: Record<string, string> = {
+  ANALYZED: 'border-green-200 bg-green-50 text-green-700',
+  PROCESSING: 'border-amber-200 bg-amber-50 text-amber-700',
+  FAILED: 'border-red-200 bg-red-50 text-red-700',
+}
+
+function formatUploadDate(value: string) {
+  try {
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) {
+      return value
+    }
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(date)
+  } catch {
+    return value
+  }
+}
 
 interface PersonaFormState {
   name: string
@@ -35,17 +61,37 @@ export default function PersonasPage() {
   const { user, isLoading: authLoading } = useRequireAuth()
   const { token } = useAuth()
   const { personas, isLoading: personasLoading, error, setPersonas, defaultPersonaId, userId } = usePersonas()
+  const {
+    uploads,
+    uploadDetails,
+    isLoading: uploadsLoading,
+    error: uploadsError,
+    fetchDetails: loadUploadDetails,
+    refresh: refreshUploads,
+    isFetchingDetails,
+  } = useUploads()
 
   const [activePersonaId, setActivePersonaId] = useState<string | null>(null)
   const [formState, setFormState] = useState<PersonaFormState>(initialFormState)
   const [isSaving, setIsSaving] = useState(false)
   const [formMessage, setFormMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [expandedUploadId, setExpandedUploadId] = useState<string | null>(null)
+  const [suggestionMessage, setSuggestionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [creatingSuggestionKey, setCreatingSuggestionKey] = useState<string | null>(null)
+  const [createdSuggestionMap, setCreatedSuggestionMap] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     if (!activePersonaId && personas.length > 0) {
       setActivePersonaId(personas.find((persona) => persona.isDefault)?.id ?? personas[0].id)
     }
   }, [activePersonaId, personas])
+
+  useEffect(() => {
+    if (!expandedUploadId) {
+      setSuggestionMessage(null)
+      setCreatingSuggestionKey(null)
+    }
+  }, [expandedUploadId])
 
   const activePersona = useMemo(
     () => personas.find((persona) => persona.id === activePersonaId) ?? null,
@@ -58,6 +104,112 @@ export default function PersonasPage() {
 
   const handleFormChange = (field: keyof PersonaFormState, value: string) => {
     setFormState((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const getSuggestionKey = (uploadId: string, suggestionId: string) => `${uploadId}:${suggestionId}`
+
+  const handleToggleUpload = (uploadId: string) => {
+    if (expandedUploadId === uploadId) {
+      setExpandedUploadId(null)
+      setSuggestionMessage(null)
+      setCreatingSuggestionKey(null)
+      return
+    }
+
+    setExpandedUploadId(uploadId)
+    setSuggestionMessage(null)
+
+    loadUploadDetails(uploadId).then((details) => {
+      if (!details) {
+        setSuggestionMessage({
+          type: 'error',
+          text: 'Unable to load analysis for this upload. Please try again.',
+        })
+      }
+    })
+  }
+
+  const handleCreateSuggestion = async (uploadId: string, suggestion: PersonaSuggestion) => {
+    if (!token || !userId) {
+      setSuggestionMessage({
+        type: 'error',
+        text: 'You need to be logged in to add personas from suggestions.',
+      })
+      return
+    }
+
+    const suggestionKey = getSuggestionKey(uploadId, suggestion.id)
+    setSuggestionMessage(null)
+    setCreatingSuggestionKey(suggestionKey)
+
+    const parseJSON = <T,>(value: unknown, fallback: T): T => {
+      if (value == null) return fallback
+      if (typeof value === 'string') {
+        try {
+          return JSON.parse(value) as T
+        } catch {
+          return fallback
+        }
+      }
+      return value as T
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/uploads/${uploadId}/create-persona`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          suggestionId: suggestion.id,
+          name: suggestion.name,
+          description: suggestion.description,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data?.success || !data?.persona) {
+        throw new Error(data?.error || 'Unable to create persona from this suggestion.')
+      }
+
+      const personaPayload = data.persona as Record<string, unknown>
+
+      const createdPersona: Persona = {
+        id: String(personaPayload.id),
+        userId: typeof personaPayload.userId === 'string' ? personaPayload.userId : undefined,
+        name: String(personaPayload.name),
+        description: typeof personaPayload.description === 'string' ? personaPayload.description : undefined,
+        isDefault: Boolean(personaPayload.isDefault),
+        tone: parseJSON<string[]>(personaPayload.tone, []),
+        cadence: String(personaPayload.cadence),
+        donts: parseJSON<string[]>(personaPayload.donts, []),
+        hookPatterns: parseJSON<string[]>(personaPayload.hookPatterns, []),
+        ctaStyle: String(personaPayload.ctaStyle),
+        platforms: parseJSON<Record<string, PersonaPlatformConfig>>(personaPayload.platforms, {}),
+        createdAt: typeof personaPayload.createdAt === 'string' ? personaPayload.createdAt : undefined,
+        updatedAt: typeof personaPayload.updatedAt === 'string' ? personaPayload.updatedAt : undefined,
+      }
+
+      setPersonas((prev) => [createdPersona, ...prev])
+      setActivePersonaId(createdPersona.id)
+      setCreatedSuggestionMap((prev) => ({ ...prev, [suggestionKey]: true }))
+      setSuggestionMessage({
+        type: 'success',
+        text: `Added ${createdPersona.name} to your persona library.`,
+      })
+
+      await refreshUploads()
+    } catch (err) {
+      console.error('Failed to create persona from suggestion', err)
+      setSuggestionMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Unable to create persona from this suggestion.',
+      })
+    } finally {
+      setCreatingSuggestionKey(null)
+    }
   }
 
   const handlePersonaCreate = async (event: FormEvent<HTMLFormElement>) => {
@@ -168,6 +320,284 @@ export default function PersonasPage() {
               so the model knows what to avoid.
             </p>
           </div>
+        </div>
+      </section>
+
+      <section className="space-y-6">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-1">
+            <h2 className="text-xl font-semibold text-gray-900">Upload history & AI suggestions</h2>
+            <p className="text-sm text-gray-600">
+              Analyze past posts to generate personas grounded in your real voice and performance.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={refreshUploads}
+            className="btn-secondary w-full justify-center px-4 py-2 text-sm lg:w-auto"
+            disabled={uploadsLoading}
+          >
+            {uploadsLoading ? 'Refreshing...' : 'Refresh uploads'}
+          </button>
+        </div>
+
+        {uploadsError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+            {uploadsError}
+          </div>
+        )}
+
+        <div className="space-y-4">
+          {uploadsLoading && uploads.length === 0 ? (
+            [...Array(2)].map((_, index) => (
+              <div key={index} className="card space-y-3">
+                <div className="h-5 w-44 animate-pulse rounded bg-gray-100" />
+                <div className="h-4 w-full animate-pulse rounded bg-gray-100" />
+                <div className="h-4 w-2/3 animate-pulse rounded bg-gray-100" />
+              </div>
+            ))
+          ) : uploads.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
+              No uploads analyzed yet. Drop a CSV of your posts on the Uploads tool to unlock AI persona suggestions.
+            </div>
+          ) : (
+            uploads.map((upload) => {
+              const details = uploadDetails[upload.id]
+              const statusClass =
+                uploadStatusStyles[upload.status as keyof typeof uploadStatusStyles] ??
+                'border-gray-200 bg-gray-100 text-gray-600'
+              const isExpanded = expandedUploadId === upload.id
+              const suggestionCount = details?.analysis?.personaSuggestions?.length ?? 0
+
+              return (
+                <div key={upload.id} className="card space-y-4">
+                  <button type="button" onClick={() => handleToggleUpload(upload.id)} className="w-full text-left">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-base font-semibold text-gray-900">
+                          {upload.originalName || upload.filename}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                          <span className="capitalize">{upload.platform}</span>
+                          <span>• {formatUploadDate(upload.createdAt)}</span>
+                          <span>• {upload.totalPosts} posts</span>
+                          {upload.status === 'ANALYZED' && suggestionCount > 0 && (
+                            <span>• {suggestionCount} suggestion{suggestionCount === 1 ? '' : 's'}</span>
+                          )}
+                        </div>
+                      </div>
+                      <span
+                        className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusClass}`}
+                      >
+                        {upload.status.toLowerCase()}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm text-gray-600">
+                      {upload.status === 'ANALYZED'
+                        ? 'Tap to review AI persona suggestions and top-performing posts.'
+                        : upload.status === 'PROCESSING'
+                        ? 'We are still processing this upload. Refresh in a bit to see suggestions.'
+                        : upload.error
+                        ? upload.error
+                        : 'This upload failed to analyze. Try uploading a fresh CSV.'}
+                    </p>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="space-y-5 border-t border-gray-200 pt-4">
+                      {suggestionMessage && (
+                        <div
+                          className={`rounded-lg border px-4 py-2 text-sm ${
+                            suggestionMessage.type === 'success'
+                              ? 'border-green-200 bg-green-50 text-green-700'
+                              : 'border-red-200 bg-red-50 text-red-700'
+                          }`}
+                        >
+                          {suggestionMessage.text}
+                        </div>
+                      )}
+
+                      {isFetchingDetails[upload.id] ? (
+                        <div className="flex items-center gap-3 text-sm text-gray-500">
+                          <span className="inline-block h-2 w-2 animate-ping rounded-full bg-indigo-400" />
+                          Loading analysis...
+                        </div>
+                      ) : upload.status !== 'ANALYZED' ? (
+                        <p className="text-sm text-gray-500">
+                          {upload.status === 'PROCESSING'
+                            ? 'We are still crunching the numbers. Check back shortly for persona suggestions.'
+                            : 'This upload did not complete successfully, so suggestions are unavailable.'}
+                        </p>
+                      ) : !details ? (
+                        <p className="text-sm text-gray-500">
+                          We could not load the analysis for this upload. Try refreshing the uploads list.
+                        </p>
+                      ) : (
+                        <>
+                          {details.analysis && (
+                            <div className="grid gap-4 md:grid-cols-3">
+                              <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Average length</p>
+                                <p className="mt-1 text-sm font-semibold text-gray-900">
+                                  {details.analysis.avgLength
+                                    ? `${Math.round(details.analysis.avgLength)} characters`
+                                    : '—'}
+                                </p>
+                              </div>
+                              <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Sentiment score</p>
+                                <p className="mt-1 text-sm font-semibold text-gray-900">
+                                  {details.analysis.sentimentScore != null
+                                    ? details.analysis.sentimentScore.toFixed(2)
+                                    : '—'}
+                                </p>
+                              </div>
+                              <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cadence</p>
+                                <p className="mt-1 text-sm font-semibold capitalize text-gray-900">
+                                  {details.analysis.cadence || 'Not detected'}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {details.analysis?.toneKeywords?.length ? (
+                            <div className="space-y-2">
+                              <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                Tone keywords
+                              </span>
+                              <div className="flex flex-wrap gap-2">
+                                {details.analysis.toneKeywords.map((keyword) => (
+                                  <span
+                                    key={keyword}
+                                    className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-600"
+                                  >
+                                    {keyword}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-sm font-semibold text-gray-900">Persona suggestions</h4>
+                              {suggestionCount > 0 && (
+                                <span className="text-xs text-gray-400">
+                                  {suggestionCount} option{suggestionCount === 1 ? '' : 's'}
+                                </span>
+                              )}
+                            </div>
+                            {details.analysis?.personaSuggestions?.length ? (
+                              details.analysis.personaSuggestions.map((suggestion) => {
+                                const suggestionKey = getSuggestionKey(upload.id, suggestion.id)
+                                const isCreating = creatingSuggestionKey === suggestionKey
+                                const hasCreated = createdSuggestionMap[suggestionKey]
+                                const matchScore =
+                                  suggestion.matchScore != null
+                                    ? Math.round(suggestion.matchScore * 100)
+                                    : null
+                                return (
+                                  <div key={suggestion.id} className="rounded-lg border border-gray-200 px-4 py-4 shadow-sm">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                      <div className="space-y-2">
+                                        <p className="text-base font-semibold text-gray-900">{suggestion.name}</p>
+                                        <p className="text-sm text-gray-600">{suggestion.description}</p>
+                                        <div className="flex flex-wrap gap-2">
+                                          {suggestion.tone.map((tone) => (
+                                            <span
+                                              key={tone}
+                                              className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-600"
+                                            >
+                                              {tone}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      {matchScore != null && (
+                                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">
+                                          {matchScore}% match
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
+                                      <span className="capitalize">Cadence: {suggestion.cadence}</span>
+                                      <span>CTA: {suggestion.ctaStyle}</span>
+                                      {suggestion.hookPatterns?.length ? (
+                                        <span>Hooks: {suggestion.hookPatterns.slice(0, 2).join(', ')}</span>
+                                      ) : null}
+                                    </div>
+                                    {suggestion.samplePosts?.length ? (
+                                      <div className="mt-3 space-y-2">
+                                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                          Example posts
+                                        </span>
+                                        <div className="space-y-2">
+                                          {suggestion.samplePosts.slice(0, 2).map((sample, index) => (
+                                            <blockquote
+                                              key={`${suggestion.id}-sample-${index}`}
+                                              className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600"
+                                            >
+                                              {sample}
+                                            </blockquote>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCreateSuggestion(upload.id, suggestion)}
+                                        className="btn-primary text-sm"
+                                        disabled={isCreating || hasCreated}
+                                      >
+                                        {hasCreated ? 'Added to library' : isCreating ? 'Adding...' : 'Add to personas'}
+                                      </button>
+                                      {hasCreated && (
+                                        <span className="text-sm font-medium text-emerald-600">
+                                          Ready in your persona library.
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })
+                            ) : (
+                              <p className="text-sm text-gray-500">
+                                We did not find enough signal to recommend personas yet. Try uploading a different set of
+                                posts.
+                              </p>
+                            )}
+                          </div>
+
+                          {details.analyzedPosts?.length ? (
+                            <div className="space-y-2">
+                              <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                Top performing posts
+                              </span>
+                              <div className="grid gap-3 md:grid-cols-2">
+                                {details.analyzedPosts.slice(0, 4).map((post) => (
+                                  <div key={post.id} className="rounded-lg border border-gray-100 bg-white px-4 py-3">
+                                    <p className="line-clamp-4 text-sm text-gray-600">{post.content}</p>
+                                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                                      {typeof post.engagementScore === 'number' && (
+                                        <span>Score: {post.engagementScore.toFixed(1)}</span>
+                                      )}
+                                      {post.originalDate && <span>{formatUploadDate(post.originalDate)}</span>}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
         </div>
       </section>
 
