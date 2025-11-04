@@ -60,6 +60,28 @@ export class ContentUploadService {
     return filename
   }
 
+  private async removeUploadArtifacts(uploadId: string, filename?: string | null) {
+    try {
+      await prisma.$transaction([
+        prisma.analyzedPost.deleteMany({ where: { uploadId } }),
+        prisma.contentUpload.delete({ where: { id: uploadId } }),
+      ])
+    } catch (error) {
+      console.error('Failed to delete upload records', error)
+    }
+
+    if (!filename) return
+
+    try {
+      const filePath = path.join(this.UPLOAD_DIR, filename)
+      await fs.unlink(filePath)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.error('Failed to delete upload file', error)
+      }
+    }
+  }
+
   /**
    * Parse CSV file
    */
@@ -70,7 +92,8 @@ export class ContentUploadService {
     const records = parse(fileContent, {
       columns: true,
       skip_empty_lines: true,
-      trim: true
+      trim: true,
+      bom: true
     })
 
     return records
@@ -641,6 +664,8 @@ export class ContentUploadService {
         platforms: JSON.stringify({})
       }
     })
+
+    await this.removeUploadArtifacts(uploadId, upload.filename)
 
     return persona
   }
