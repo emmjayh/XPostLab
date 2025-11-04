@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePersonas } from '@/hooks/usePersonas'
@@ -79,6 +79,12 @@ export default function PersonasPage() {
   const [suggestionMessage, setSuggestionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [creatingSuggestionKey, setCreatingSuggestionKey] = useState<string | null>(null)
   const [createdSuggestionMap, setCreatedSuggestionMap] = useState<Record<string, boolean>>({})
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploadPlatform, setUploadPlatform] = useState<string>('twitter')
+  const [uploadMessage, setUploadMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [isDragActive, setIsDragActive] = useState(false)
 
   useEffect(() => {
     if (!activePersonaId && personas.length > 0) {
@@ -104,6 +110,131 @@ export default function PersonasPage() {
 
   const handleFormChange = (field: keyof PersonaFormState, value: string) => {
     setFormState((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const processSelectedFile = (file: File) => {
+    const MAX_UPLOAD_SIZE = 10 * 1024 * 1024
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      setUploadFile(null)
+      setUploadMessage({
+        type: 'error',
+        text: 'Please upload a CSV file exported from X or LinkedIn.',
+      })
+      return
+    }
+
+    if (file.size > MAX_UPLOAD_SIZE) {
+      setUploadFile(null)
+      setUploadMessage({
+        type: 'error',
+        text: 'That file is larger than 10MB. Trim it down and try again.',
+      })
+      return
+    }
+
+    setUploadFile(file)
+    setUploadMessage(null)
+  }
+
+  const handleFileInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      processSelectedFile(file)
+    }
+    event.target.value = ''
+  }
+
+  const handleDrop = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault()
+    setIsDragActive(false)
+
+    const file = event.dataTransfer.files?.[0]
+    if (file) {
+      processSelectedFile(file)
+    }
+  }
+
+  const handleDragOver = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault()
+    setIsDragActive(true)
+  }
+
+  const handleDragLeave = () => {
+    setIsDragActive(false)
+  }
+
+  const handleRemoveUploadFile = () => {
+    setUploadFile(null)
+    setUploadMessage(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const handleUploadPlatformChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setUploadPlatform(event.target.value)
+  }
+
+  const handleUploadSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!token) {
+      setUploadMessage({
+        type: 'error',
+        text: 'Sign in to upload your posts for analysis.',
+      })
+      return
+    }
+
+    if (!uploadFile) {
+      setUploadMessage({
+        type: 'error',
+        text: 'Choose a CSV file before uploading.',
+      })
+      return
+    }
+
+    try {
+      setIsUploading(true)
+      setUploadMessage(null)
+
+      const formData = new FormData()
+      formData.append('file', uploadFile)
+      formData.append('platform', uploadPlatform)
+
+      const response = await fetch(`${API_BASE}/api/uploads/csv`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Unable to upload CSV right now.')
+      }
+
+      setUploadMessage({
+        type: 'success',
+        text: 'Upload received. We will analyze it and refresh the suggestions shortly.',
+      })
+      setUploadFile(null)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+
+      await refreshUploads()
+    } catch (err) {
+      console.error('Upload failed', err)
+      setUploadMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Upload failed. Please try again.',
+      })
+    } finally {
+      setIsUploading(false)
+    }
   }
 
   const getSuggestionKey = (uploadId: string, suggestionId: string) => `${uploadId}:${suggestionId}`
@@ -339,6 +470,115 @@ export default function PersonasPage() {
             {uploadsLoading ? 'Refreshing...' : 'Refresh uploads'}
           </button>
         </div>
+
+        <form className="card space-y-5" onSubmit={handleUploadSubmit}>
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-gray-900">Upload a CSV of your posts</h3>
+            <p className="text-sm text-gray-600">
+              Drag in exports from X or LinkedIn and we will surface tone analysis with ready-to-save persona suggestions.
+            </p>
+          </div>
+
+          <label
+            htmlFor="upload-csv"
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            onDragLeave={handleDragLeave}
+            className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition ${
+              isDragActive
+                ? 'border-indigo-300 bg-indigo-50'
+                : 'border-gray-200 bg-gray-50 hover:border-indigo-200 hover:bg-white'
+            }`}
+          >
+            <input
+              id="upload-csv"
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={handleFileInputChange}
+              disabled={isUploading}
+            />
+            {uploadFile ? (
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-gray-900">{uploadFile.name}</p>
+                <p className="text-xs text-gray-500">
+                  {(uploadFile.size / 1024).toFixed(1)} KB • Ready to upload
+                </p>
+                <button
+                  type="button"
+                  className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    handleRemoveUploadFile()
+                  }}
+                  disabled={isUploading}
+                >
+                  Remove file
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white text-indigo-600 shadow-sm">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    className="h-6 w-6"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 12-3-3m3 3 3-3m-9 7h12" />
+                  </svg>
+                </span>
+                <p className="text-sm font-medium text-gray-900">Drop CSV here or click to browse</p>
+                <p className="text-xs text-gray-500">We accept exports up to 10MB from X or LinkedIn.</p>
+              </div>
+            )}
+          </label>
+
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr),auto] lg:items-end">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500" htmlFor="upload-platform">
+                Platform
+              </label>
+              <select
+                id="upload-platform"
+                value={uploadPlatform}
+                onChange={handleUploadPlatformChange}
+                className="input"
+                disabled={isUploading}
+              >
+                <option value="twitter">X (Twitter)</option>
+                <option value="linkedin">LinkedIn</option>
+                <option value="instagram">Instagram</option>
+              </select>
+            </div>
+            <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end">
+              <span className="text-xs text-gray-500">CSV limit 10MB • We keep only the text content.</span>
+              <button
+                type="submit"
+                className="btn-primary text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isUploading || !uploadFile}
+              >
+                {isUploading ? 'Uploading...' : 'Upload CSV'}
+              </button>
+            </div>
+          </div>
+
+          {uploadMessage && (
+            <div
+              className={`rounded-lg border px-4 py-2 text-sm ${
+                uploadMessage.type === 'success'
+                  ? 'border-green-200 bg-green-50 text-green-700'
+                  : 'border-red-200 bg-red-50 text-red-700'
+              }`}
+            >
+              {uploadMessage.text}
+            </div>
+          )}
+        </form>
 
         {uploadsError && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
