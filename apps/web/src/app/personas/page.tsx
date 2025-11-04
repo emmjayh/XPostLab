@@ -316,8 +316,7 @@ export default function PersonasPage() {
           <div className="card space-y-3">
             <h2 className="text-lg font-semibold text-gray-900">Tip</h2>
             <p className="text-sm text-gray-600">
-            Keep persona tone lists to 3-5 descriptors. Align cadence with the platform you post on the most, and capture "don'ts" so the model knows what to avoid.
-              so the model knows what to avoid.
+              Keep persona tone lists to 3-5 descriptors. Align cadence with the platform you post on the most, and capture &quot;don&apos;ts&quot; so the model knows what to avoid.
             </p>
           </div>
         </div>
