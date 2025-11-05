@@ -90,8 +90,8 @@ export const defaultPersonas = [
 /**
  * Seed default personas for a new user
  */
-export async function seedDefaultPersonas(userId: string) {
-  const personas = await prisma.persona.createMany({
+export async function seedDefaultPersonas(userId: string): Promise<void> {
+  await prisma.persona.createMany({
     data: defaultPersonas.map(p => ({
       id: p.id,
       userId,
@@ -107,6 +107,4 @@ export async function seedDefaultPersonas(userId: string) {
     })),
     skipDuplicates: true
   })
-
-  return personas
 }

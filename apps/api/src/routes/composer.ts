@@ -35,7 +35,7 @@ const composerRoutes: FastifyPluginAsync = async (fastify) => {
                 type: 'number',
                 minimum: 1,
                 maximum: 5,
-                default: 3,
+                default: 1,
                 description: 'Number of variants to generate'
               },
               maxLength: {
@@ -44,10 +44,21 @@ const composerRoutes: FastifyPluginAsync = async (fastify) => {
                 maximum: 5000,
                 description: 'Custom character limit (defaults: Twitter=280, LinkedIn=3000, Instagram=2200)'
               },
+              maxTokens: {
+                type: 'number',
+                minimum: 10,
+                maximum: 2000,
+                description: 'Custom token limit (approx 4 characters per token)'
+              },
               includeHashtags: {
                 type: 'boolean',
                 default: false,
                 description: 'Include relevant hashtags'
+              },
+              includeEmojis: {
+                type: 'boolean',
+                default: false,
+                description: 'Allow emojis in the generated content'
               }
             }
           }
@@ -98,7 +109,9 @@ const composerRoutes: FastifyPluginAsync = async (fastify) => {
       options?: {
         variants?: number
         maxLength?: number
+        maxTokens?: number
         includeHashtags?: boolean
+        includeEmojis?: boolean
       }
     }
 
@@ -194,8 +207,21 @@ const composerRoutes: FastifyPluginAsync = async (fastify) => {
           options: {
             type: 'object',
             properties: {
-              variants: { type: 'number', minimum: 1, maximum: 3, default: 2 },
-              maxLength: { type: 'number' }
+              variants: { type: 'number', minimum: 1, maximum: 3, default: 1 },
+              maxLength: { type: 'number' },
+              maxTokens: {
+                type: 'number',
+                minimum: 10,
+                maximum: 2000
+              },
+              includeHashtags: {
+                type: 'boolean',
+                default: false
+              },
+              includeEmojis: {
+                type: 'boolean',
+                default: false
+              }
             }
           }
         }
@@ -206,7 +232,13 @@ const composerRoutes: FastifyPluginAsync = async (fastify) => {
       input: string
       personaId: string
       platform: 'twitter' | 'linkedin' | 'instagram'
-      options?: { variants?: number; maxLength?: number }
+      options?: {
+        variants?: number
+        maxLength?: number
+        maxTokens?: number
+        includeHashtags?: boolean
+        includeEmojis?: boolean
+      }
     }
 
     try {

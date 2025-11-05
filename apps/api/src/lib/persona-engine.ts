@@ -1,4 +1,5 @@
 import { Persona, ContentRequest, ContentVariant, GenerationResult } from './types'
+import { approxCharsPerToken, applyOutputLimits, countTokens } from './token-utils'
 
 export class PersonaEngine {
   private persona: Persona
@@ -21,9 +22,6 @@ PERSONA PROFILE:
 - Hook Patterns: ${this.persona.hookPatterns.join(', ')}
 - CTA Style: ${this.persona.ctaStyle}
 
-STRICT RULES (NEVER violate these):
-${this.persona.donts.map(dont => `- DO NOT ${dont}`).join('\n')}
-
 VOICE GUIDELINES:
 - Match the specified tone and cadence exactly
 - Use the preferred hook patterns when appropriate
@@ -32,13 +30,16 @@ VOICE GUIDELINES:
 `)
 
     this.templates.set('composer_prompt', `
-Create {variants} unique social media posts from this brain dump or idea:
+Create {variants} unique social media {postLabel} from this brain dump or idea:
 
 INPUT: {input}
 PLATFORM: {platform}
-MAX LENGTH: {maxLength}
+TARGET LENGTH: approximately {maxLength} characters
+MAX TOKENS: {maxTokens}
+HASHTAG RULES: {hashtagRules}
+EMOJI RULES: {emojiRules}
 
-For each variant, provide:
+For each {variantLabel}, provide:
 1. Hook (opening line that grabs attention)
 2. Body (main content that delivers value)
 3. CTA (call-to-action that matches the persona's style)
@@ -55,17 +56,19 @@ Return as JSON array with this structure:
   }
 }]
 
-Make each variant unique in approach while maintaining the persona's voice.
+Make each {variantLabel} unique in approach while maintaining the persona's voice.
 `)
 
     this.templates.set('reply_prompt', `
-Generate {variants} sharp, value-adding replies to this post:
+Generate {variants} sharp, value-adding {replyLabel} to this post:
 
 ORIGINAL POST: {originalPost}
 AUTHOR: {author}
 GOAL: {replyGoal}
+HASHTAG RULES: {hashtagRules}
+EMOJI RULES: {emojiRules}
 
-Create replies that:
+Create {replyLabel} that:
 - Add genuine value, not generic praise
 - Show expertise and insight
 - Feel conversational, not promotional
@@ -117,11 +120,40 @@ Return as JSON array with same structure as composer.
 
     if (!template) throw new Error(`Template not found for type: ${request.type}`)
 
-    return template
-      .replace('{variants}', request.options.variants?.toString() || '3')
-      .replace('{input}', request.input)
-      .replace('{platform}', request.platform)
-      .replace('{maxLength}', this.getPlatformMaxLength(request.platform, request.options.maxLength).toString())
+    const variantCount = request.options.variants ?? 1
+    const variantLabel = variantCount === 1 ? 'variant' : 'variants'
+    const postLabel = variantCount === 1 ? 'post' : 'posts'
+    const replyLabel = variantCount === 1 ? 'reply' : 'replies'
+    const maxLengthValue = this.getPlatformMaxLength(request.platform, request.options.maxLength)
+    const maxTokensValue =
+      request.options.maxTokens ?? Math.ceil(maxLengthValue / approxCharsPerToken())
+    const maxLength = maxLengthValue.toString()
+    const maxTokens = maxTokensValue.toString()
+
+    const includeHashtags = request.options.includeHashtags ?? false
+    const includeEmojis = request.options.includeEmojis ?? false
+    const hashtagRules = includeHashtags ? 'Include 1-2 relevant hashtags only when useful.' : 'Do not include hashtags.'
+    const emojiRules = includeEmojis ? 'Emojis are permitted; use them sparingly.' : 'Do not use emojis.'
+
+    const replacements: Record<string, string> = {
+      '{variants}': variantCount.toString(),
+      '{variantLabel}': variantLabel,
+      '{postLabel}': postLabel,
+      '{replyLabel}': replyLabel,
+      '{input}': request.input,
+      '{platform}': request.platform,
+      '{maxLength}': maxLength,
+      '{maxTokens}': maxTokens,
+      '{hashtagRules}': hashtagRules,
+      '{emojiRules}': emojiRules,
+    }
+
+    let prompt = template
+    for (const [token, value] of Object.entries(replacements)) {
+      prompt = prompt.split(token).join(value)
+    }
+
+    return prompt
   }
 
   private getPlatformMaxLength(platform: string, override?: number): number {
@@ -138,25 +170,67 @@ Return as JSON array with same structure as composer.
 
   validateOutput(variants: ContentVariant[], request: ContentRequest): GenerationResult {
     const maxLength = this.getPlatformMaxLength(request.platform, request.options.maxLength)
+    const maxTokens =
+      request.options.maxTokens ?? Math.ceil(maxLength / approxCharsPerToken())
     const filteredVariants: ContentVariant[] = []
     const errors: string[] = []
 
     for (const variant of variants) {
-      // Check length
-      if (variant.content.length > maxLength) {
-        errors.push(`Variant ${variant.id} exceeds ${maxLength} character limit`)
-        continue
+      const originalContent = variant.content
+      const limits = applyOutputLimits(originalContent, {
+        maxTokens,
+        maxLength,
+      })
+
+      variant.content = limits.text
+
+      const includeHashtags = request.options.includeHashtags ?? false
+      const includeEmojis = request.options.includeEmojis ?? false
+      const hashtagRegex = /#[^\s#]+/g
+
+      if (!includeHashtags) {
+        variant.content = variant.content.replace(/(?:^|\s)#[^\s#]+/g, (match) => (match.startsWith(' ') ? ' ' : '')).replace(/\s{2,}/g, ' ').trim()
+        variant.hashtags = []
+      } else {
+        const extractedMatches = variant.content.match(hashtagRegex)
+        const extracted = extractedMatches ? Array.from(extractedMatches) : []
+        if (extracted.length) {
+          variant.hashtags = Array.from(new Set(extracted.map((tag) => tag.trim())))
+        }
       }
 
-      // Check for don'ts violations
-      const violations = this.checkDontsViolations(variant.content)
-      if (violations.length > 0) {
-        errors.push(`Variant ${variant.id} violates rules: ${violations.join(', ')}`)
-        continue
+      if (!includeEmojis) {
+        variant.content = variant.content.replace(/\p{Extended_Pictographic}/gu, '').replace(/\s{2,}/g, ' ').trim()
       }
 
-      // Add metadata
       variant.metadata.length = variant.content.length
+      variant.metadata.tokenLength = countTokens(variant.content)
+
+      if (limits.charOverflow > 0) {
+        variant.metadata.overLimit = Math.max(
+          variant.metadata.overLimit ?? 0,
+          limits.charOverflow
+        )
+      }
+
+      if (limits.tokenOverflow > 0) {
+        variant.metadata.overTokenLimit = Math.max(
+          variant.metadata.overTokenLimit ?? 0,
+          limits.tokenOverflow
+        )
+      }
+
+      if (limits.wasTruncated) {
+        variant.metadata.wasTruncated = true
+        variant.metadata.originalLength = variant.metadata.originalLength ?? originalContent.length
+        variant.metadata.originalContent = variant.metadata.originalContent ?? originalContent
+      }
+
+      if (!variant.content.trim()) {
+        errors.push(`Variant ${variant.id} was truncated to empty content after enforcing limits`)
+        continue
+      }
+
       filteredVariants.push(variant)
     }
 
@@ -169,21 +243,6 @@ Return as JSON array with same structure as composer.
         processingTime: Date.now() // This should be set by the caller
       }
     }
-  }
-
-  private checkDontsViolations(content: string): string[] {
-    const violations: string[] = []
-    const lowerContent = content.toLowerCase()
-
-    for (const dont of this.persona.donts) {
-      // Simple keyword matching - could be enhanced with NLP
-      const keywords = dont.toLowerCase().split(' ')
-      if (keywords.some(keyword => lowerContent.includes(keyword))) {
-        violations.push(dont)
-      }
-    }
-
-    return violations
   }
 
   // Static method to create engine from database persona

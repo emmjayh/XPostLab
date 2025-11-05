@@ -22,9 +22,11 @@ export const ContentRequestSchema = z.object({
   personaId: z.string(),
   platform: z.enum(['twitter', 'linkedin', 'instagram']),
   options: z.object({
-    variants: z.number().min(1).max(5).default(3),
+    variants: z.number().min(1).max(5).default(1),
     maxLength: z.number().optional(),
+    maxTokens: z.number().min(1).max(2000).optional(),
     includeHashtags: z.boolean().default(false),
+    includeEmojis: z.boolean().default(false),
     tone: z.string().optional()
   }).default({})
 })
@@ -46,7 +48,9 @@ export const ContentVariantSchema = z.object({
     wasTruncated: z.boolean().optional(),
     originalLength: z.number().optional(),
     overLimit: z.number().optional(),
-    originalContent: z.string().optional()
+    overTokenLimit: z.number().optional(),
+    originalContent: z.string().optional(),
+    tokenLength: z.number().optional()
   })
 })
 

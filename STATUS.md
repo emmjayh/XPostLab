@@ -22,7 +22,7 @@
 - **Status**: Connected and working
 - **Version**: 0.12.6
 - **URL**: http://localhost:11434
-- **Model**: llama3.1:8b
+- **Model**: gemma3:12b
 - **Performance**: Generated 2 variants in ~10 seconds
 
 ### Test Results
@@ -80,7 +80,7 @@ Successfully generated professional LinkedIn content from brain dump:
 ┌─────────────────┐      ┌──────────────┐
 │  Local Machine  │      │              │
 │                 │      │   Ollama     │
-│  API (Fastify)  ├─────►│  llama3.1    │
+│  API (Fastify)  ├─────►│  gemma3      │
 │  Port 8001      │ HTTP │  Port 11434  │
 └─────────────────┘      └──────────────┘
 ```

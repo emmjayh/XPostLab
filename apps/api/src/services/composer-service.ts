@@ -1,5 +1,6 @@
 import { prisma } from '../lib/database'
 import { PersonaEngine, ContentRequest, ContentVariant, GenerationResult } from '../lib'
+import { countTokens, approxCharsPerToken, applyOutputLimits, normalizeToString } from '../lib/token-utils'
 import { JobService } from './job-service'
 
 export interface ComposerRequest {
@@ -10,7 +11,9 @@ export interface ComposerRequest {
   options?: {
     variants?: number
     maxLength?: number // Custom character limit (defaults based on platform)
+    maxTokens?: number
     includeHashtags?: boolean
+    includeEmojis?: boolean
   }
 }
 
@@ -54,7 +57,7 @@ export class ComposerService {
 
       const { config: personaConfig, persistedId } = await this.resolvePersonaConfig(request.personaId, request.userId)
 
-      const requestedVariants = request.options?.variants ?? 3
+      const requestedVariants = request.options?.variants ?? 1
       const shouldGenerateSync =
         !request.userId || (requestedVariants <= 5 && request.input.length < 2000)
 
@@ -115,13 +118,25 @@ export class ComposerService {
         platforms: personaConfig.platforms,
       })
 
-      // Determine max length based on platform or user override
-      const platformDefaults = {
+      // Determine limits based on platform with token support
+      const platformCharDefaults = {
         twitter: 280,
         linkedin: 3000,
-        instagram: 2200
+        instagram: 2200,
       }
-      const maxLength = request.options?.maxLength || platformDefaults[request.platform]
+      const platformTokenDefaults = {
+        twitter: 80,
+        linkedin: 750,
+        instagram: 550,
+      }
+
+      const defaultCharLimit = platformCharDefaults[request.platform]
+      const maxLength = request.options?.maxLength ?? defaultCharLimit
+      const defaultTokenLimit = platformTokenDefaults[request.platform]
+      const maxTokens =
+        request.options?.maxTokens ??
+        defaultTokenLimit ??
+        Math.ceil(maxLength / approxCharsPerToken())
 
       // Build content request
       const contentRequest: ContentRequest = {
@@ -130,9 +145,11 @@ export class ComposerService {
         personaId: request.personaId,
         platform: request.platform,
         options: {
-          variants: request.options?.variants || 3,
-          maxLength: maxLength,
-          includeHashtags: request.options?.includeHashtags || false
+          variants: request.options?.variants ?? 1,
+          maxLength,
+          maxTokens,
+          includeHashtags: request.options?.includeHashtags ?? false,
+          includeEmojis: request.options?.includeEmojis ?? false,
         }
       }
 
@@ -161,97 +178,192 @@ export class ComposerService {
     }
   }
 
+
   private async generateWithDirectOllama(
-    personaEngine: PersonaEngine, 
+    personaEngine: PersonaEngine,
     request: ContentRequest
   ): Promise<GenerationResult> {
     const startTime = Date.now()
-    console.log('🦙 Starting Ollama generation...')
+    console.log('Starting Ollama generation...')
 
     try {
-      // Call Ollama API directly with simple prompt (bypass PersonaEngine for now)
       const ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
-      const model = 'llama3.1:8b' // Use llama3.1 which we know works
-      console.log('🌐 Calling Ollama:', { ollamaUrl, model })
+      const model = 'gemma3:12b' // Default to Gemma 3 12B for richer outputs
+      console.log('Calling Ollama:', { ollamaUrl, model })
 
       const variants: ContentVariant[] = []
-      const variantCount = request.options.variants || 3
-      const charLimit = request.options.maxLength || 280
+      const variantCount = request.options?.variants ?? 1
+      const tokenLimit =
+        request.options.maxTokens ??
+        Math.ceil((request.options.maxLength ?? 280) / approxCharsPerToken())
+      const charLimit =
+        request.options.maxLength ?? Math.ceil(tokenLimit * approxCharsPerToken())
 
-      // Generate multiple variants ONE AT A TIME
       for (let i = 0; i < variantCount; i++) {
-        console.log(`🔄 Generating variant ${i + 1}/${variantCount}...`)
+        console.log(`Generating variant ${i + 1}/${variantCount}...`)
 
-        // Very simple prompt that works
         const hookStyle = i === 0 ? 'Ask a question' : i === 1 ? 'Share an insight' : 'Tell a story'
-        const simplePrompt = `Write a short ${request.platform} post about: "${request.input}"
+        const includeHashtags = request.options?.includeHashtags ?? false
+        const includeEmojis = request.options?.includeEmojis ?? false
 
-${hookStyle} to hook readers, add valuable content, and end with a call-to-action.
+        const rules: string[] = [
+          `- Keep the entire post under ${charLimit} characters (approx ${tokenLimit} tokens).`,
+          '- Return ONLY the final post text. No headings, instructions, or additional sections.',
+          '- Write a single, polished post without replies or follow-up content.'
+        ]
 
-IMPORTANT: Keep it under ${charLimit} characters total.
+        if (includeHashtags) {
+          rules.push('- Include 1-2 concise hashtags only if they add value (preferably at the end).')
+        } else {
+          rules.push('- Do not include hashtags.')
+        }
 
-Format your response exactly like this:
-Hook: [your hook here]
-Body: [your main content here]
-CTA: [your call-to-action here]`
+        if (includeEmojis) {
+          rules.push('- Emojis are allowed; use them sparingly to add personality.')
+        } else {
+          rules.push('- Do not use emojis.')
+        }
 
-        console.log(`📝 Sending prompt to Ollama:\n${simplePrompt}`)
+        const basePrompt = `You are writing a ${request.platform} post.
+${rules.join('\n')}
 
-        const response = await fetch(`${ollamaUrl}/api/generate`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model,
-            prompt: simplePrompt,
-            stream: false,
-            options: {
-              temperature: 0.7,
-              num_predict: 150
-            }
+Topic: "${request.input}"
+
+Style hint: ${hookStyle}.
+
+Produce a single post that satisfies every rule above.`
+
+        const maxAttempts = 4
+        let attempt = 0
+        let prompt = basePrompt
+        let acceptedVariant: ContentVariant | null = null
+        let lastVariant: ContentVariant | null = null
+        let lastCharLength = 0
+        let lastTokenLength = 0
+
+        while (attempt < maxAttempts) {
+          attempt++
+          console.log(`Sending prompt to Ollama (attempt ${attempt}/${maxAttempts}):\n${prompt}`)
+
+          const response = await fetch(`${ollamaUrl}/api/generate`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model,
+              prompt,
+              stream: false,
+              options: {
+                temperature: 0.7,
+                num_predict: 150,
+              },
+            }),
           })
-        })
-        
-        console.log(`📡 Ollama response status: ${response.status}`)
 
-        if (!response.ok) {
-          throw new Error(`Ollama API error: ${response.statusText}`)
+          console.log(`Ollama response status: ${response.status}`)
+
+          if (!response.ok) {
+            throw new Error(`Ollama API error: ${response.statusText}`)
+          }
+
+          const result = await response.json()
+          const content = normalizeToString(result.response).trim()
+          const generatedTokens = countTokens(content)
+          console.log(
+            `Generated content (${content.length} chars, ${generatedTokens} tokens):`,
+            content.slice(0, 200) + '...'
+          )
+
+          const candidate = this.parseGeneratedContent(content, `variant_${i + 1}`, request)
+          candidate.metadata.length = candidate.content.length
+          candidate.metadata.tokenLength = countTokens(candidate.content)
+
+          lastVariant = candidate
+          lastCharLength = candidate.metadata.length
+          lastTokenLength = candidate.metadata.tokenLength
+
+          if (candidate.metadata.length <= charLimit && candidate.metadata.tokenLength <= tokenLimit) {
+            acceptedVariant = candidate
+            break
+          }
+
+          console.log(
+            `Variant ${i + 1} exceeded limits (${candidate.metadata.length}/${charLimit} chars, ${candidate.metadata.tokenLength}/${tokenLimit} tokens)`
+          )
+
+          if (attempt >= maxAttempts) {
+            break
+          }
+
+          prompt = `${basePrompt}
+
+Your previous attempt was ${lastCharLength} characters and ${lastTokenLength} tokens.
+Rewrite the single ${request.platform} post to satisfy every rule: stay under ${charLimit} characters, no extra sections, no replies, no labels—just the final post text. Remove filler until the post meets the limit.`
         }
 
-        const result = await response.json()
-        const content = result.response.trim()
-        console.log(`📄 Generated content (${content.length} chars):`, content.slice(0, 200) + '...')
+        let finalVariant: ContentVariant | null = acceptedVariant
 
-        // Parse the generated content into components
-        let variant = this.parseGeneratedContent(content, `variant_${i + 1}`, request)
+        if (!finalVariant && lastVariant) {
+          console.log(
+            `All attempts exceeded limits. Applying fallback clamp (may reduce richness).`
+          )
+          const originalFallbackContent = lastVariant.content
+          const fallback = applyOutputLimits(originalFallbackContent, {
+            maxTokens: tokenLimit,
+            maxLength: charLimit,
+          })
 
-        // Auto-truncate if over limit - save original for rework
-        if (variant.content.length > charLimit) {
-          const overLimit = variant.content.length - charLimit
-          const originalContent = variant.content
-          console.log(`⚠️ Variant ${i + 1} is ${overLimit} characters OVER the ${charLimit} limit (${variant.content.length} total)`)
-          console.log(`📝 Full untruncated content:\n${variant.content}`)
-          variant.content = variant.content.substring(0, charLimit - 3) + '...'
-          variant.metadata.length = variant.content.length
-          variant.metadata.wasTruncated = true
-          variant.metadata.originalLength = originalContent.length
-          variant.metadata.overLimit = overLimit
-          variant.metadata.originalContent = originalContent
-          console.log(`✂️ Truncated to ${variant.metadata.length} chars`)
+          lastVariant.content = fallback.text
+          lastVariant.metadata.length = fallback.text.length
+          lastVariant.metadata.tokenLength = fallback.tokens
+          lastVariant.metadata.wasTruncated = true
+          lastVariant.metadata.originalLength =
+            lastVariant.metadata.originalLength ?? originalFallbackContent.length
+          lastVariant.metadata.originalContent =
+            lastVariant.metadata.originalContent ?? originalFallbackContent
+
+          if (fallback.charOverflow > 0) {
+            lastVariant.metadata.overLimit = Math.max(
+              lastVariant.metadata.overLimit ?? 0,
+              fallback.charOverflow
+            )
+          }
+
+          if (fallback.tokenOverflow > 0) {
+            lastVariant.metadata.overTokenLimit = Math.max(
+              lastVariant.metadata.overTokenLimit ?? 0,
+              fallback.tokenOverflow
+            )
+          }
+
+          finalVariant = lastVariant
         }
 
-        console.log(`📋 Parsed variant:`, JSON.stringify(variant, null, 2))
-        variants.push(variant)
+        if (!finalVariant) {
+          throw new Error('Failed to produce a variant within the specified limits.')
+        }
+
+        // Ensure metadata reflects final content limits
+        finalVariant.metadata.length = finalVariant.content.length
+        finalVariant.metadata.tokenLength = countTokens(finalVariant.content)
+
+        if (!finalVariant.metadata.wasTruncated) {
+          finalVariant.metadata.originalLength = undefined
+          finalVariant.metadata.originalContent = undefined
+          finalVariant.metadata.overLimit = undefined
+          finalVariant.metadata.overTokenLimit = undefined
+        }
+
+        console.log(`Parsed variant:`, JSON.stringify(finalVariant, null, 2))
+        variants.push(finalVariant)
       }
 
-      // Validate with persona engine
       const result = personaEngine.validateOutput(variants, request)
       result.metadata.processingTime = Date.now() - startTime
       result.metadata.model = model
 
       return result
-
     } catch (error) {
       console.error('Ollama generation error:', error)
       return {
@@ -260,96 +372,94 @@ CTA: [your call-to-action here]`
         error: error instanceof Error ? error.message : 'Generation failed',
         metadata: {
           personaUsed: request.personaId,
-          processingTime: Date.now() - startTime
-        }
+          processingTime: Date.now() - startTime,
+        },
       }
     }
   }
 
   private parseGeneratedContent(content: string, variantId: string, request: ContentRequest): ContentVariant {
-    // Parse the Hook/Body/CTA format
-    let hook = ''
-    let body = ''
-    let cta = ''
+    let sanitized = normalizeToString(content).trim()
 
-    // Extract Hook, Body, and CTA using regex (handle both markdown ** and plain formats)
-    const hookMatch = content.match(/\*\*Hook:\*\*\s*(.+?)(?=\n|$)/is) || content.match(/Hook:\s*(.+?)(?=\nBody:|\n\*\*Body:|\n|$)/is)
-    const bodyMatch = content.match(/\*\*Body:\*\*\s*(.+?)(?=\n|$)/is) || content.match(/Body:\s*(.+?)(?=\nCTA:|\n\*\*CTA:|\n|$)/is)
-    const ctaMatch = content.match(/\*\*CTA:\*\*\s*(.+?)$/is) || content.match(/CTA:\s*(.+?)$/is)
+    sanitized = sanitized.replace(/^['"`]+|['"`]+$/g, '')
+    sanitized = sanitized.replace(/^```(?:[a-zA-Z]+)?\s*([\s\S]*?)\s*```$/g, '$1').trim()
+    sanitized = sanitized.replace(/\b(?:Hook|Body|CTA|Copy|Variant)\s*[:\-]\s*/gi, '')
 
-    if (hookMatch) hook = hookMatch[1].trim().replace(/\*\*/g, '') // Remove any ** markdown
-    if (bodyMatch) body = bodyMatch[1].trim().replace(/\*\*/g, '')
-    if (ctaMatch) cta = ctaMatch[1].trim().replace(/\*\*/g, '')
-
-    // Fallback: if parsing failed, use the whole content as body
-    if (!hook && !body && !cta) {
-      // Try old common patterns
-      const hookPatterns = [
-        /^(Here's what.*?[:.])/i,
-        /^(Unpopular opinion[:.])/i,
-      /^(Quick thread on.*?[:.])/i,
-      /^(What if I told you.*?[:.])/i,
-      /^(After \d+ years.*?[:.])/i
-    ]
-    
-    for (const pattern of hookPatterns) {
-      const match = content.match(pattern)
-      if (match) {
-        hook = match[1]
-        body = content.replace(pattern, '').trim()
-        break
+    const cutoffMarkers = ['\nReplies', '\nReply', '\n---', '\n# Replies', '\nAdditional context', '\nNotes']
+    for (const markerString of cutoffMarkers) {
+      const idx = sanitized.toLowerCase().indexOf(markerString.toLowerCase())
+      if (idx >= 0) {
+        sanitized = sanitized.slice(0, idx).trim()
       }
     }
-    
-    // Extract CTA (usually at the end)
-    const ctaPatterns = [
-      /\n\n(.+[?!])\s*$/,
-      /\n\n(What are your thoughts\?.*?)$/i,
-      /\n\n(Drop your.*?)$/i,
-      /\n\n(Agree or disagree\?.*?)$/i
-    ]
-    
-    for (const pattern of ctaPatterns) {
-      const match = body.match(pattern)
-      if (match) {
-        cta = match[1]
-        body = body.replace(pattern, '').trim()
-        break
-      }
+
+    const includeHashtags = request.options?.includeHashtags ?? false
+    const includeEmojis = request.options?.includeEmojis ?? false
+
+    if (!includeEmojis) {
+      sanitized = sanitized.replace(/\p{Extended_Pictographic}/gu, '')
     }
-    
-    // Use fallbacks if parsing failed
-    if (!hook) hook = "Here's something interesting:"
-    if (!body) body = content
-    if (!cta) cta = "What are your thoughts?"
-  }
 
-    // Generate hashtags if requested
-    const hashtags = request.options.includeHashtags ? this.generateHashtags(request.platform) : []
+    sanitized = sanitized.replace(/\s+\n/g, ' ').replace(/\n+/g, ' ')
+    sanitized = sanitized.replace(/\s{2,}/g, ' ').trim()
 
-    // Calculate the ACTUAL content length (what will be posted)
-    const actualContent = `${hook} ${body} ${cta}`.trim()
-    const actualLength = actualContent.length
+    let hashtags: string[] = []
+
+    if (includeHashtags) {
+      const hashtagRegex = /#[^\s#]+/g
+      let extractedMatches = sanitized.match(hashtagRegex)
+      let extracted = extractedMatches ? Array.from(extractedMatches) : []
+
+      if (extracted.length === 0) {
+        const generated = this.generateHashtags(request.platform)
+        if (generated.length) {
+          const appended = `${sanitized} ${generated.join(' ')}`.trim()
+          sanitized = appended
+          extractedMatches = sanitized.match(hashtagRegex)
+          extracted = extractedMatches ? Array.from(extractedMatches) : generated
+        }
+      }
+
+      hashtags = extracted.map((tag) => tag.trim())
+    } else {
+      sanitized = sanitized.replace(/(?:^|\s)#[^\s#]+/g, (match) => (match.startsWith(' ') ? ' ' : ''))
+    }
+
+    if (!includeEmojis) {
+      sanitized = sanitized.replace(/\p{Extended_Pictographic}/gu, '')
+    }
+
+    sanitized = sanitized.replace(/\s{2,}/g, ' ').trim()
+
+    if (!sanitized) {
+      sanitized = 'Preview unavailable.'
+    }
+
+    if (includeHashtags && hashtags.length) {
+      hashtags = Array.from(new Set(hashtags.map((tag) => tag.trim())))
+    }
+
+    const hashtagsForMeta = includeHashtags ? hashtags : []
 
     return {
       id: variantId,
-      content: actualContent, // Use the combined content, not the raw Ollama response
-      hook,
-      body,
-      cta,
-      hashtags,
+      content: sanitized,
+      body: sanitized,
+      hook: sanitized,
+      cta: undefined,
+      hashtags: hashtagsForMeta,
       metadata: {
-        length: actualLength, // Use the ACTUAL tweet length
-        sentiment: 'positive', // Could be enhanced with sentiment analysis
-        hookType: this.getHookType(hook)
-      }
+        length: sanitized.length,
+        sentiment: 'positive',
+        hookType: this.getHookType(sanitized),
+      },
     }
   }
 
   // Mock generation for demo purposes (kept as fallback)
   private async generateMockVariants(request: ContentRequest): Promise<ContentVariant[]> {
     const variants: ContentVariant[] = []
-    const variantCount = request.options.variants || 3
+    const variantCount = request.options?.variants ?? 1
 
     const hooks = [
       "Here's what I learned from",
@@ -370,24 +480,45 @@ CTA: [your call-to-action here]`
     for (let i = 0; i < variantCount; i++) {
       const hook = hooks[i % hooks.length]
       const cta = ctas[i % ctas.length]
-      
-      // Simple content transformation
       const body = this.transformInput(request.input, i)
-      const content = `${hook} ${body}\n\n${cta}`
+      const rawContent = `${hook} ${body}\n\n${cta}`
 
-      variants.push({
-        id: `variant_${i + 1}`,
-        content,
-        hook,
-        body,
-        cta,
-        hashtags: request.options.includeHashtags ? this.generateHashtags(request.platform) : [],
-        metadata: {
-          length: content.length,
-          sentiment: 'positive',
-          hookType: this.getHookType(hook)
-        }
+      let variant = this.parseGeneratedContent(rawContent, `variant_${i + 1}`, request)
+
+      const limits = applyOutputLimits(variant.content, {
+        maxTokens: request.options.maxTokens,
+        maxLength: request.options.maxLength,
       })
+
+      variant.content = limits.text
+      variant.body = limits.text
+      variant.hook = variant.content
+      variant.metadata.length = limits.text.length
+      variant.metadata.tokenLength = limits.tokens
+      variant.metadata.sentiment = 'positive'
+      variant.metadata.hookType = this.getHookType(variant.content)
+
+      if (limits.wasTruncated) {
+        variant.metadata.wasTruncated = true
+        variant.metadata.originalLength = rawContent.length
+        variant.metadata.originalContent = rawContent
+      } else {
+        delete variant.metadata.wasTruncated
+        delete variant.metadata.originalLength
+        delete variant.metadata.originalContent
+        delete variant.metadata.overLimit
+        delete variant.metadata.overTokenLimit
+      }
+
+      if (limits.charOverflow > 0) {
+        variant.metadata.overLimit = limits.charOverflow
+      }
+
+      if (limits.tokenOverflow > 0) {
+        variant.metadata.overTokenLimit = limits.tokenOverflow
+      }
+
+      variants.push(variant)
     }
 
     return variants
@@ -489,7 +620,7 @@ CTA: [your call-to-action here]`
     result: GenerationResult
   ) {
     if (!request.userId || !result.variants?.length) {
-      return
+      return null
     }
 
     const job = await this.jobService.logJobResult({

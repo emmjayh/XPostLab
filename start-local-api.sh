@@ -29,7 +29,7 @@ DATABASE_URL="your-railway-postgres-url-here"
 
 # Ollama configuration
 OLLAMA_BASE_URL="http://localhost:11434"
-OLLAMA_MODEL="llama3.1:8b"
+OLLAMA_MODEL="gemma3:12b"
 
 # API configuration
 PORT=8000
